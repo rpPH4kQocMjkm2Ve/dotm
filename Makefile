@@ -10,7 +10,7 @@ LICENSEDIR = $(PREFIX)/share/licenses/$(pkgname)
 BINARY = dotm
 
 build:
-	go build -o $(BINARY) ./cmd/dotm/
+	CGO_ENABLED=0 go build -trimpath -buildmode=pie -o $(BINARY) ./cmd/dotm/
 
 test:
 	go test ./...
