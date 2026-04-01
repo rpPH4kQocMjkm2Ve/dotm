@@ -41,6 +41,9 @@ func run() error {
 	case "help", "--help", "-h":
 		printUsage()
 		return nil
+    case "version", "--version", "-V":
+        cmdVersion()
+        return nil
 	default:
 		return fmt.Errorf("unknown command %q\nrun 'dotm help' for usage", cmd)
 	}
@@ -270,6 +273,7 @@ Commands:
   status     Show sync state of managed files
   status -v  Show all files including clean ones
   status -q  Exit 1 if any problems, no output
+  version    Print version and exit
   help       Show this help
 
 dotm looks for dotm.toml in the current directory or any parent.
