@@ -36,6 +36,8 @@ func run() error {
 		return cmdApply(flags)
 	case "diff":
 		return cmdDiff()
+	case "status":
+		return cmdStatus(flags)
 	case "help", "--help", "-h":
 		printUsage()
 		return nil
@@ -128,7 +130,7 @@ func cmdApply(flags []string) error {
 		return err
 	}
 
-	// Save state (prompt answers + script hashes).
+	// Save state (prompt answers + script hashes + manifest).
 	if changed || !dryRun {
 		if err := state.Save(sourceDir); err != nil {
 			return fmt.Errorf("save state: %w", err)
@@ -165,6 +167,66 @@ func cmdDiff() error {
 	}
 
 	return eng.Diff()
+}
+
+func cmdStatus(flags []string) error {
+	verbose := false
+	quiet := false
+	for _, f := range flags {
+		switch f {
+		case "-v", "--verbose":
+			verbose = true
+		case "-q", "--quiet":
+			quiet = true
+		default:
+			return fmt.Errorf("unknown flag %q for status", f)
+		}
+	}
+
+	sourceDir, err := findSourceDir()
+	if err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(filepath.Join(sourceDir, configName))
+	if err != nil {
+		return err
+	}
+
+	state, err := prompt.LoadState(sourceDir)
+	if err != nil {
+		return err
+	}
+
+	// Resolve prompts if needed (status may render templates).
+	if _, err := prompt.Resolve(cfg, state, os.Stdin, os.Stdout); err != nil {
+		return err
+	}
+
+	eng, err := engine.New(cfg, state, sourceDir, false)
+	if err != nil {
+		return err
+	}
+
+	report, err := eng.Status()
+	if err != nil {
+		return err
+	}
+
+	if quiet {
+		if report.HasProblems() {
+			os.Exit(1)
+		}
+		return nil
+	}
+
+	engine.PrintReport(report, verbose)
+
+	if !verbose && !report.HasProblems() {
+		fmt.Println("  all clean")
+	}
+
+	return nil
 }
 
 // findSourceDir walks up from the current directory looking for dotm.toml.
@@ -205,6 +267,9 @@ Commands:
   apply      Apply files, symlinks, perms, and scripts to dest
   apply -n   Dry run — show what would be done without writing
   diff       Show unified diff between source and dest
+  status     Show sync state of managed files
+  status -v  Show all files including clean ones
+  status -q  Exit 1 if any problems, no output
   help       Show this help
 
 dotm looks for dotm.toml in the current directory or any parent.

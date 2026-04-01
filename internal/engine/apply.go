@@ -15,7 +15,7 @@ import (
 	"dotm/internal/tmpl"
 )
 
-// Engine holds the resolved state needed to apply or diff.
+// Engine holds the resolved state needed to apply, diff, or status.
 type Engine struct {
 	cfg       *config.Config
 	state     *prompt.State
@@ -50,7 +50,7 @@ func New(cfg *config.Config, state *prompt.State, sourceDir string, dryRun bool)
 }
 
 // Apply walks files/, copies/renders to dest, creates symlinks,
-// applies perms, and runs scripts.
+// applies perms, runs scripts, and records the manifest.
 func (e *Engine) Apply() error {
 	// 1. Walk files/ and copy/render.
 	written, err := e.walkAndWrite()
@@ -73,7 +73,43 @@ func (e *Engine) Apply() error {
 		return fmt.Errorf("run scripts: %w", err)
 	}
 
+	// 5. Record manifest (skip on dry run — nothing was actually written).
+	if !e.dryRun {
+		e.recordManifest(written)
+	}
+
 	return nil
+}
+
+// recordManifest saves the list of deployed paths into state.
+func (e *Engine) recordManifest(writtenAbs []string) {
+	var files, dirs []string
+	dest := filepath.Clean(e.cfg.Dest)
+
+	for _, abs := range writtenAbs {
+		rel, err := filepath.Rel(dest, abs)
+		if err != nil || rel == "." {
+			continue
+		}
+
+		info, err := os.Lstat(abs)
+		if err != nil {
+			continue
+		}
+		if info.IsDir() {
+			dirs = append(dirs, rel)
+		} else {
+			files = append(files, rel)
+		}
+	}
+
+	// Symlinks defined in config.
+	var symlinks []string
+	for linkRel := range e.cfg.Symlinks {
+		symlinks = append(symlinks, linkRel)
+	}
+
+	e.state.SetManifest(files, dirs, symlinks)
 }
 
 // Diff shows a unified diff between rendered source and current dest.

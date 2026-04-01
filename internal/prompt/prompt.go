@@ -16,10 +16,19 @@ import (
 	"dotm/internal/config"
 )
 
-// State holds cached prompt answers and script hashes.
+// Manifest records what apply last wrote to dest.
+// All paths are relative to dest (e.g. ".config/hypr/hyprland.conf").
+type Manifest struct {
+	Files       []string `toml:"files"`
+	Directories []string `toml:"directories"`
+	Symlinks    []string `toml:"symlinks"`
+}
+
+// State holds cached prompt answers, script hashes, and the deploy manifest.
 type State struct {
 	Data         map[string]any    `toml:"data"`
 	ScriptHashes map[string]string `toml:"script_hashes"`
+	Manifest     Manifest          `toml:"manifest"`
 }
 
 // stateDir returns ~/.local/state/dotm, creating it if needed.
@@ -97,6 +106,19 @@ func (s *State) Save(sourceDir string) error {
 	defer f.Close()
 
 	return toml.NewEncoder(f).Encode(s)
+}
+
+// SetManifest replaces the manifest with new lists of deployed paths.
+// All paths must be relative to dest.
+func (s *State) SetManifest(files, directories, symlinks []string) {
+	sort.Strings(files)
+	sort.Strings(directories)
+	sort.Strings(symlinks)
+	s.Manifest = Manifest{
+		Files:       files,
+		Directories: directories,
+		Symlinks:    symlinks,
+	}
 }
 
 // Resolve ensures all prompts defined in cfg have values in state.
