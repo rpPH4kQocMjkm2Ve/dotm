@@ -33,12 +33,23 @@ The repo is the single source of truth. `apply` is a one-directional push. No bi
 
 ## Installation
 
-### From source
+### AUR
+
+```bash
+yay -S dotm
+```
+
+### [gitpkg](https://gitlab.com/fkzys/gitpkg)
+```bash
+gitpkg install dotm
+```
+
+### Manual
 
 ```bash
 git clone https://gitlab.com/fkzys/dotm.git
 cd dotm
-make install        # builds and installs to /usr/bin/dotm
+sudo make install
 ```
 
 ### Build only
