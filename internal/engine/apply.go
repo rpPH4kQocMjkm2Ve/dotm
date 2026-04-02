@@ -237,7 +237,10 @@ func (e *Engine) walkAndWrite() ([]string, error) {
 			return nil
 		}
 
-		if err := os.WriteFile(destPath, content, 0o644); err != nil {
+		// Write with restrictive permissions initially.
+		// Correct permissions are applied later by applyPerms.
+		// This avoids a window where sensitive files are world-readable.
+		if err := os.WriteFile(destPath, content, 0o600); err != nil {
 			return err
 		}
 
@@ -364,7 +367,7 @@ func (e *Engine) runScripts() error {
 			continue
 		}
 
-		if err := execScript(content); err != nil {
+		if err := execScript(content, e.cfg.Shell); err != nil {
 			return fmt.Errorf("script %s: %w", sc.Path, err)
 		}
 	}
@@ -372,8 +375,8 @@ func (e *Engine) runScripts() error {
 	return nil
 }
 
-// execScript writes content to a temp file and executes it with bash.
-func execScript(content []byte) error {
+// execScript writes content to a temp file and executes it with the configured shell.
+func execScript(content []byte, shell string) error {
 	tmp, err := os.CreateTemp("", "dotm-script-*.sh")
 	if err != nil {
 		return err
@@ -390,7 +393,7 @@ func execScript(content []byte) error {
 		return err
 	}
 
-	cmd := exec.Command("bash", tmp.Name())
+	cmd := exec.Command(shell, tmp.Name())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
