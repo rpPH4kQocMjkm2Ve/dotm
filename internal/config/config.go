@@ -11,18 +11,11 @@ import (
 
 // Config represents the dotm.toml configuration file.
 type Config struct {
-	Dest       string                  `toml:"dest"`
-	Encryption EncryptionConfig        `toml:"encryption"`
-	Prompts    map[string]PromptConfig `toml:"prompts"`
-	Symlinks   map[string]string       `toml:"symlinks"`
-	Scripts    []ScriptConfig          `toml:"scripts"`
-}
-
-// EncryptionConfig holds age encryption settings.
-type EncryptionConfig struct {
-	Type       string   `toml:"type"`
-	Identity   string   `toml:"identity"`
-	Recipients []string `toml:"recipients"`
+	Dest     string                  `toml:"dest"`
+	Shell    string                  `toml:"shell"`
+	Prompts  map[string]PromptConfig `toml:"prompts"`
+	Symlinks map[string]string       `toml:"symlinks"`
+	Scripts  []ScriptConfig          `toml:"scripts"`
 }
 
 // PromptConfig defines an interactive prompt.
@@ -47,7 +40,11 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg.Dest = expandHome(cfg.Dest)
-	cfg.Encryption.Identity = expandHome(cfg.Encryption.Identity)
+
+	// Default shell to bash if not specified.
+	if cfg.Shell == "" {
+		cfg.Shell = "bash"
+	}
 
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
