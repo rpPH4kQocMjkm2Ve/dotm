@@ -41,9 +41,9 @@ func run() error {
 	case "help", "--help", "-h":
 		printUsage()
 		return nil
-    case "version", "--version", "-V":
-        cmdVersion()
-        return nil
+	case "version", "--version", "-V":
+		cmdVersion()
+		return nil
 	default:
 		return fmt.Errorf("unknown command %q\nrun 'dotm help' for usage", cmd)
 	}
