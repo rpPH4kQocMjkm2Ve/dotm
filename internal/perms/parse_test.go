@@ -1,6 +1,7 @@
 package perms
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -180,20 +181,7 @@ func assertParseError(t *testing.T, err error, substr string) {
 	if !ok {
 		t.Fatalf("expected *ParseError, got %T: %v", err, err)
 	}
-	if !contains(pe.Error(), substr) {
+	if !strings.Contains(pe.Error(), substr) {
 		t.Errorf("error %q does not contain %q", pe.Error(), substr)
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
