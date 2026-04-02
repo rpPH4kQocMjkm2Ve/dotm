@@ -20,13 +20,23 @@ func MatchGlob(pattern, path string) bool {
 
 var (
 	globCache   = make(map[string]*regexp.Regexp)
-	globCacheMu sync.Mutex
+	globCacheMu sync.RWMutex
 )
 
 func compileGlob(pattern string) *regexp.Regexp {
+	// Fast path: read lock for cache hits.
+	globCacheMu.RLock()
+	if cached, ok := globCache[pattern]; ok {
+		globCacheMu.RUnlock()
+		return cached
+	}
+	globCacheMu.RUnlock()
+
+	// Slow path: write lock for cache misses.
 	globCacheMu.Lock()
 	defer globCacheMu.Unlock()
 
+	// Double-check after acquiring write lock.
 	if cached, ok := globCache[pattern]; ok {
 		return cached
 	}
@@ -77,7 +87,7 @@ func buildGlobRegex(pattern string) string {
 		case rightSlash:
 			// ** /b (start)  →  (.*/)?b
 			// Matches: b, x/b, x/y/b
-			b.WriteString("(.*/)?" )
+			b.WriteString("(.*/)?")
 			// Skip leading / from right segment.
 			b.WriteString(escapeGlobSegment(segments[i][1:]))
 
