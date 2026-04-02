@@ -132,13 +132,14 @@ func TestFuncHasKeyMissing(t *testing.T) {
 }
 
 func TestFuncReplace(t *testing.T) {
-	data := map[string]any{"home": "/home/alice"}
-	out, err := Render(`{{ replace "$HOME" .home "/app/$HOME/config" }}`, "test", data)
+	data := map[string]any{}
+	// replace(old, new, s) — replaces all occurrences of old with new in s.
+	out, err := Render(`{{ replace "world" "Go" "hello world" }}`, "test", data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(out) != "/app/home/alice/config" {
-		t.Errorf("got %q", out)
+	if string(out) != "hello Go" {
+		t.Errorf("got %q, want 'hello Go'", out)
 	}
 }
 
