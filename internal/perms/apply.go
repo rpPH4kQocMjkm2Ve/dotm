@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -168,30 +169,18 @@ func isDir(path string) bool {
 // the caller doesn't have an explicit list.
 func CollectManagedPaths(destDir string) ([]string, error) {
 	var paths []string
-	err := walkDir(destDir, func(path string, d os.DirEntry) error {
+	err := filepath.WalkDir(destDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		// Skip the root directory itself.
+		if path == destDir {
+			return nil
+		}
 		paths = append(paths, path)
 		return nil
 	})
 	return paths, err
-}
-
-func walkDir(root string, fn func(string, os.DirEntry) error) error {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		path := root + "/" + e.Name()
-		if err := fn(path, e); err != nil {
-			return err
-		}
-		if e.IsDir() {
-			if err := walkDir(path, fn); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 // FileMode returns the current permission bits of a file.
