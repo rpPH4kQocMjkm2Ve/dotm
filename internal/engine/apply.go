@@ -12,8 +12,10 @@ import (
 	"dotm/internal/ignore"
 	"dotm/internal/perms"
 	"dotm/internal/prompt"
+	"dotm/internal/safetemp"
 	"dotm/internal/tmpl"
 )
+
 
 // Engine holds the resolved state needed to apply, diff, or status.
 type Engine struct {
@@ -375,9 +377,13 @@ func (e *Engine) runScripts() error {
 	return nil
 }
 
-// execScript writes content to a temp file and executes it with the configured shell.
+// execScript writes content to a temp file in a secure directory and executes
+// it with the configured shell. Uses XDG_RUNTIME_DIR or user state directory
+// to prevent symlink race attacks in /tmp.
 func execScript(content []byte, shell string) error {
-	tmp, err := os.CreateTemp("", "dotm-script-*.sh")
+	dir := safetemp.SecureDir()
+
+	tmp, err := os.CreateTemp(dir, "dotm-script-*.sh")
 	if err != nil {
 		return err
 	}
@@ -436,7 +442,9 @@ func writeTmp(prefix string, content []byte) (string, error) {
 	if content == nil {
 		content = []byte{}
 	}
-	f, err := os.CreateTemp("", prefix)
+
+	dir := safetemp.SecureDir()
+	f, err := os.CreateTemp(dir, prefix)
 	if err != nil {
 		return "", err
 	}
