@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/rpPH4kQocMjkm2Ve/dotm/actions/workflows/ci.yml/badge.svg)](https://github.com/rpPH4kQocMjkm2Ve/dotm/actions/workflows/ci.yml)
 ![License](https://img.shields.io/github/license/rpPH4kQocMjkm2Ve/dotm)
+[![Spec](https://img.shields.io/endpoint?url=https://gitlab.com/fkzys/specs/-/raw/main/version.json&maxAge=300)](https://gitlab.com/fkzys/specs)
 
 Declarative dotfiles manager. Lightweight chezmoi alternative with normal file paths, delegated encryption, proper permission management, and first-class support for `dest = "/"`.
 
