@@ -4,7 +4,7 @@
 ![License](https://img.shields.io/github/license/rpPH4kQocMjkm2Ve/dotm)
 [![Spec](https://img.shields.io/endpoint?url=https://gitlab.com/fkzys/specs/-/raw/main/version.json&maxAge=300)](https://gitlab.com/fkzys/specs)
 
-Declarative dotfiles manager. Lightweight chezmoi alternative with normal file paths, delegated encryption, proper permission management, and first-class support for `dest = "/"`.
+Declarative dotfiles, packages, and services manager. Lightweight chezmoi alternative with normal file paths, delegated encryption, proper permission management, and first-class support for `dest = "/"`.
 
 ## How it works
 
@@ -20,6 +20,14 @@ dotm apply
   7. Record manifest for orphan tracking
 ```
 
+By default, `apply`, `status`, and `diff` operate on files only. Add scope words to include packages and services:
+
+```
+dotm apply --all           # files + pkgs + services
+dotm status pkgs           # package status only
+dotm diff files services   # file diffs + service changes
+```
+
 The repo is the single source of truth. `apply` is a one-directional push. No bidirectional sync, no source state attributes, no magic prefixes.
 
 ## Why not chezmoi
@@ -29,8 +37,9 @@ The repo is the single source of truth. `apply` is a one-directional push. No bi
 | **File naming** | `.config/hypr/hyprland.conf` | `dot_config/private_dot_hypr/hyprland.conf` |
 | **Encryption** | Delegate to sops, age, etc. | Built-in age/gpg |
 | **Permissions** | First-class `perms` file with glob patterns | Limited (encoded in filename prefixes) |
-| **`dest = "/"`** | Works out of the box | Needs workarounds |
-| **Complexity** | ~2k LOC | ~50k LOC |
+| **`dest = "/"`** | First-class support, works out of the box | Needs workarounds |
+| **Packages** | Declarative, zero hardcoded managers | Via external tools |
+| **Complexity** | ~3k LOC | ~50k LOC |
 
 ## Installation
 
@@ -84,6 +93,7 @@ Requires Go 1.24+.
     └── reload.sh
 ```
 
+
 Files under `files/` are copied to `dest` preserving directory structure. Files ending in `.tmpl` are rendered as Go templates, with the suffix stripped in the output.
 
 ## Configuration
@@ -121,10 +131,15 @@ Files in `files/etc/pacman.conf` deploy to `/etc/pacman.conf`.
 
 ```bash
 dotm init              # resolve prompts, create state cache
-dotm apply             # deploy everything
+dotm apply             # deploy files, symlinks, perms, scripts
 dotm apply -n          # dry run — show what would happen
+dotm apply --all       # deploy files + packages + services
 dotm diff              # unified diff between source and dest
-dotm status            # show sync state of all managed files
+dotm diff pkgs         # show packages to install/remove
+dotm diff services     # show services to enable/disable
+dotm status            # show sync state of managed files
+dotm status pkgs       # show package status
+dotm status services   # show service status
 dotm status -v         # include clean files
 dotm status -q         # exit 1 if problems exist, no output
 dotm help              # show help
@@ -269,6 +284,92 @@ trigger = "on_change"     # run only when content changes
 
 Scripts are executed with `bash`. `on_change` tracks content hash in state — if the rendered script hasn't changed since last apply, it's skipped.
 
+## Package and service management
+
+Packages and services are managed via declarative **managers**. A manager defines command templates for `check`, `install`, `remove`, `enable`, and `disable`. Groups reference a manager by name and list packages or services.
+
+```toml
+[managers.pacman]
+check   = "pacman -Q {{.Name}}"
+install = "sudo pacman -S --needed {{.Name}}"
+remove  = "sudo pacman -Rns {{.Name}}"
+
+[managers.aur]
+check   = "pacman -Q {{.Name}}"
+install = "aur sync --no-view -n {{.Name}} && sudo pacman -S --needed {{.Name}}"
+remove  = "sudo pacman -Rns {{.Name}}"
+
+[managers.systemd]
+check   = "systemctl is-enabled {{.Name}}"
+enable  = "sudo systemctl enable {{.Name}}"
+disable = "sudo systemctl disable {{.Name}}"
+
+[managers.systemd-user]
+check   = "systemctl --user is-enabled {{.Name}}"
+enable  = "systemctl --user enable {{.Name}}"
+disable = "systemctl --user disable {{.Name}}"
+
+[pacman]
+packages = [
+    "hyprland",
+    "neovim",
+    "{{ if .laptop }}brightnessctl{{ end }}",
+]
+
+[aur]
+packages = ["kopia-bin", "coolercontrol-bin"]
+
+[systemd]
+services = ["firewalld", "systemd-oomd"]
+
+[systemd-user]
+services = ["hypridle", "waybar", "mpd"]
+```
+
+Package and service names may contain Go template expressions. If a name renders to an empty string, the entry is skipped.
+
+### How it works
+
+1. `dotm apply pkgs` reads the config and loads the previous manifest
+2. For each package: runs `check` → if not installed, runs `install`
+3. For each package in manifest but not in config: if still installed, runs `remove`
+4. For each service: runs `check` → if not enabled, runs `enable`
+5. For each service in manifest but not in config: if still enabled, runs `disable`
+6. Saves new manifest to state
+
+Use `dotm diff pkgs` to preview what would be installed/removed, and `dotm status pkgs` to see current package status.
+
+### Adding a manager
+
+No code changes needed — just add a section to `[managers]`:
+
+```toml
+[managers.flatpak]
+check   = "flatpak list --app --columns=application | grep -qxF {{.Name}}"
+install = "flatpak install -y --noninteractive {{.Name}}"
+remove  = "flatpak uninstall -y --noninteractive {{.Name}}"
+
+[flatpak]
+packages = ["org.mozilla.firefox"]
+```
+
+### Status output
+
+```
+$ dotm status
+  modified   .config/waybar/style.css
+  missing    .config/foot/foot.ini
+
+Packages:
+  OK       hyprland (pacman)
+  MISSING  brightnessctl (pacman)
+  OBSOLETE old-tool (pacman) — still installed
+
+Services:
+  ENABLED  firewalld (systemd)
+  DISABLED waybar (systemd-user)
+```
+
 ## Security
 
 ### Temporary files
@@ -287,7 +388,8 @@ dotm stores state in `~/.local/state/dotm/<hash>.toml`:
 
 - **Prompt answers** — cached so you're not asked every apply
 - **Script hashes** — for `on_change` trigger
-- **Manifest** — list of deployed files for orphan detection
+- **Manifest** — list of deployed files, directories, symlinks for orphan detection
+- **Pkg manifest** — list of deployed packages and services for orphan tracking
 
 Each source repo gets its own state file (keyed by SHA-256 of absolute path). Re-run `dotm init` to re-answer prompts.
 

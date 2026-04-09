@@ -12,13 +12,13 @@ _dotm() {
 
     case "${words[1]}" in
         apply)
-            COMPREPLY=( $(compgen -W "-n --dry-run -h --help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "-n --dry-run -h --help files pkgs services --all" -- "$cur") )
             ;;
         status)
-            COMPREPLY=( $(compgen -W "-v --verbose -q --quiet -h --help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "-v --verbose -q --quiet -h --help files pkgs services --all" -- "$cur") )
             ;;
         diff)
-            COMPREPLY=( $(compgen -W "-h --help" -- "$cur") )
+            COMPREPLY=( $(compgen -W "-h --help files pkgs services --all" -- "$cur") )
             ;;
         init)
             COMPREPLY=( $(compgen -W "-h --help" -- "$cur") )
@@ -26,7 +26,7 @@ _dotm() {
         reset)
             COMPREPLY=( $(compgen -W "--all -h --help" -- "$cur") )
             ;;
-        version)
+        version|help)
             COMPREPLY=()
             ;;
     esac

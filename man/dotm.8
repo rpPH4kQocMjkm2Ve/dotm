@@ -3,7 +3,7 @@
 .\"
 .TH "DOTM" "8" "" "dotm" "System Administration"
 .SH NAME
-dotm \[em] declarative dotfiles manager
+dotm \[em] declarative dotfiles, packages, and services manager
 .SH SYNOPSIS
 \f[B]dotm\f[R] \f[B]init\f[R]
 .PP
@@ -22,18 +22,22 @@ dotm \[em] declarative dotfiles manager
 .PP
 \f[B]dotm\f[R] [\f[B]\-V\f[R]|\f[B]\[en]version\f[R]]
 .SH DESCRIPTION
-\f[B]dotm\f[R] is a declarative dotfiles manager.
+\f[B]dotm\f[R] is a declarative dotfiles, packages, and services
+manager.
 It reads configuration from \f[B]dotm.toml\f[R], walks a
 \f[B]files/\f[R] directory, renders templates, writes to a destination
-directory, applies permissions, and runs lifecycle scripts.
+directory, applies permissions, runs lifecycle scripts, and manages
+packages and services via configurable managers.
 .PP
 Configuration is read from \f[B]dotm.toml\f[R], searched from the
 current directory upward.
 State is stored in \f[B]\[ti]/.local/state/dotm/\f[R].
 .PP
 Unlike other dotfiles managers, dotm uses normal file paths (no magic
-prefixes), delegates encryption to external tools (sops, age), and
-supports first\-class permission management for system files.
+prefixes), delegates encryption to external tools (sops, age), supports
+first\-class permission management for system files, and manages
+packages and services with zero hardcoded package managers or init
+systems.
 .SH COMMANDS
 .TP
 \f[B]init\f[R]
@@ -43,24 +47,67 @@ Must be run at least once before \f[B]apply\f[R].
 Re\-run to re\-answer prompts.
 .TP
 \f[B]apply\f[R]
-Walk \f[B]files/\f[R], render templates, write to \f[B]dest\f[R], create
-symlinks, apply permissions from the \f[B]perms\f[R] file, and run
-lifecycle scripts.
+By default, walk \f[B]files/\f[R], render templates, write to
+\f[B]dest\f[R], create symlinks, apply permissions from the
+\f[B]perms\f[R] file, and run lifecycle scripts.
 Records a manifest for orphan detection.
 .RS
+.PP
+When scope words are given, operate only on the specified targets:
+.TP
+\f[B]files\f[R]
+Apply files, symlinks, perms, and scripts (default behavior).
+.TP
+\f[B]pkgs\f[R]
+Install/remove packages via managers.
+.TP
+\f[B]services\f[R]
+Enable/disable services via managers.
+.TP
+\f[B]\[en]all\f[R]
+Apply everything (files + pkgs + services).
 .TP
 \f[B]\-n\f[R], \f[B]\[en]dry\-run\f[R]
 Show what would happen without making any changes.
 .RE
 .TP
 \f[B]diff\f[R]
-Show a unified diff between rendered source and current destination for
-each managed file.
+By default, show a unified diff between rendered source and current
+destination for each managed file.
+With scope words, also show package and service changes:
+.RS
+.TP
+\f[B]files\f[R]
+Show file diffs only (default).
+.TP
+\f[B]pkgs\f[R]
+Show packages that would be installed/removed.
+.TP
+\f[B]services\f[R]
+Show services that would be enabled/disabled.
+.TP
+\f[B]\[en]all\f[R]
+Show all diffs (files + pkgs + services).
+.RE
 .TP
 \f[B]status\f[R]
-Show the sync state of all managed files.
-Four states are reported:
+By default, show the sync state of all managed files.
+With scope words, show package and service status:
 .RS
+.TP
+\f[B]files\f[R]
+Show file sync state only (default).
+.TP
+\f[B]pkgs\f[R]
+Show package status only.
+.TP
+\f[B]services\f[R]
+Show service status only.
+.TP
+\f[B]\[en]all\f[R]
+Show everything (files + pkgs + services).
+.PP
+Four states are reported for files:
 .TP
 \f[B]clean\f[R]
 Destination matches rendered source.
@@ -73,6 +120,11 @@ In source but not yet in destination.
 .TP
 \f[B]orphan\f[R]
 Previously deployed, no longer in source, still in destination.
+.PP
+Packages report as \f[B]OK\f[R], \f[B]MISSING\f[R], or
+\f[B]OBSOLETE\f[R].
+Services report as \f[B]ENABLED\f[R], \f[B]DISABLED\f[R], or
+\f[B]OBSOLETE\f[R].
 .TP
 \f[B]\-v\f[R], \f[B]\[en]verbose\f[R]
 Include clean files in the output.
@@ -215,6 +267,47 @@ Trailing \f[B]/\f[R] matches directories only.
 No trailing \f[B]/\f[R] matches files only.
 \f[B]\-\f[R] means don\[cq]t change that attribute.
 Last matching rule wins.
+.PP
+If no \f[B]perms\f[R] file exists, all deployed files receive default
+\f[B]0644\f[R] permissions and directories receive \f[B]0755\f[R] after
+write.
+Files are initially written with \f[B]0600\f[R] to prevent a window
+where sensitive files are world\-readable, then lifted to the defaults
+once the apply completes.
+Add a \f[B]perms\f[R] file to override these defaults for specific
+paths.
+.SS Package and service management
+Packages and services are managed via declarative \f[B]managers\f[R].
+A manager defines command templates for \f[B]check\f[R],
+\f[B]install\f[R], \f[B]remove\f[R], \f[B]enable\f[R], and
+\f[B]disable\f[R].
+Groups (e.g.\ \f[B][pacman]\f[R], \f[B][systemd]\f[R]) reference a
+manager by name and list packages or services.
+.IP
+.EX
+\f[B][managers.pacman]\f[R]
+check   = \[dq]pacman \-Q {{.Name}}\[dq]
+install = \[dq]sudo pacman \-S \-\-needed {{.Name}}\[dq]
+remove  = \[dq]sudo pacman \-Rns {{.Name}}\[dq]
+
+\f[B][managers.systemd]\f[R]
+check   = \[dq]systemctl is\-enabled {{.Name}}\[dq]
+enable  = \[dq]sudo systemctl enable {{.Name}}\[dq]
+disable = \[dq]sudo systemctl disable {{.Name}}\[dq]
+
+\f[B][pacman]\f[R]
+packages = [\[dq]git\[dq], \[dq]neovim\[dq], \[dq]{{ if .laptop }}brightnessctl{{ end }}\[dq]]
+
+\f[B][systemd]\f[R]
+services = [\[dq]firewalld\[dq], \[dq]sshd\[dq]]
+.EE
+.PP
+Package and service names may contain Go template expressions.
+If a name renders to an empty string, the entry is skipped.
+.PP
+Template variables for commands: \- \f[B]{{.Name}}\f[R] \[em] raw
+package/service name \- In check/install/remove/enable/disable:
+\f[B]{{.Name}}\f[R] is shell\-quoted
 .SH EXAMPLES
 Initialize a new dotfiles repo:
 .IP
@@ -222,10 +315,16 @@ Initialize a new dotfiles repo:
 dotm init
 .EE
 .PP
-Deploy everything:
+Deploy files, symlinks, perms, and scripts:
 .IP
 .EX
 dotm apply
+.EE
+.PP
+Deploy everything including packages and services:
+.IP
+.EX
+dotm apply \-\-all
 .EE
 .PP
 Preview changes:
@@ -234,10 +333,16 @@ Preview changes:
 dotm apply \-n
 .EE
 .PP
-Check current state:
+Check current state of files:
 .IP
 .EX
 dotm status
+.EE
+.PP
+Check package status:
+.IP
+.EX
+dotm status pkgs
 .EE
 .PP
 Show all files including clean:
@@ -246,10 +351,22 @@ Show all files including clean:
 dotm status \-v
 .EE
 .PP
+Show everything:
+.IP
+.EX
+dotm status \-\-all
+.EE
+.PP
 Diff against rendered source:
 .IP
 .EX
 dotm diff
+.EE
+.PP
+Show what packages would be installed/removed:
+.IP
+.EX
+dotm diff pkgs
 .EE
 .SH EXIT STATUS
 .TP

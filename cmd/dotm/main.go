@@ -35,7 +35,7 @@ func run() error {
 	case "apply":
 		return cmdApply(flags)
 	case "diff":
-		return cmdDiff()
+		return cmdDiff(flags)
 	case "status":
 		return cmdStatus(flags)
 	case "reset":
@@ -92,7 +92,12 @@ func cmdInit() error {
 	// Show summary.
 	fmt.Printf("\ndotm initialized\n")
 	fmt.Printf("  source: %s\n", sourceDir)
-	fmt.Printf("  dest:   %s\n", cfg.Dest)
+	if cfg.Dest != "" {
+		fmt.Printf("  dest:   %s\n", cfg.Dest)
+	}
+	if len(cfg.Managers) > 0 {
+		fmt.Printf("  managers: %d\n", len(cfg.Managers))
+	}
 	fmt.Printf("  state:  %s\n", prompt.FormatStateFile(sourceDir))
 
 	if len(state.Data) > 0 {
@@ -106,6 +111,11 @@ func cmdInit() error {
 }
 
 func cmdApply(flags []string) error {
+	flags, scope, err := engine.ParseScope(flags)
+	if err != nil {
+		return err
+	}
+
 	dryRun := false
 	for _, f := range flags {
 		switch f {
@@ -126,7 +136,7 @@ func cmdApply(flags []string) error {
 		return err
 	}
 
-	if err := eng.Apply(); err != nil {
+	if err := eng.Apply(scope); err != nil {
 		return err
 	}
 
@@ -140,7 +150,15 @@ func cmdApply(flags []string) error {
 	return nil
 }
 
-func cmdDiff() error {
+func cmdDiff(flags []string) error {
+	flags, scope, err := engine.ParseScope(flags)
+	if err != nil {
+		return err
+	}
+	if len(flags) > 0 {
+		return fmt.Errorf("unknown flag %q for diff", flags[0])
+	}
+
 	sourceDir, cfg, state, _, err := setupEngine()
 	if err != nil {
 		return err
@@ -151,10 +169,15 @@ func cmdDiff() error {
 		return err
 	}
 
-	return eng.Diff()
+	return eng.Diff(scope)
 }
 
 func cmdStatus(flags []string) error {
+	flags, scope, err := engine.ParseScope(flags)
+	if err != nil {
+		return err
+	}
+
 	verbose := false
 	quiet := false
 	for _, f := range flags {
@@ -178,7 +201,7 @@ func cmdStatus(flags []string) error {
 		return err
 	}
 
-	report, err := eng.Status()
+	report, err := eng.Status(scope, verbose)
 	if err != nil {
 		return err
 	}
@@ -190,7 +213,7 @@ func cmdStatus(flags []string) error {
 		return nil //nolint:unreachable // quiet mode with problems: exit above
 	}
 
-	engine.PrintReport(report, verbose)
+	engine.PrintReport(report, verbose, scope)
 
 	if !verbose && !report.HasProblems() {
 		fmt.Println("  all clean")
@@ -309,23 +332,39 @@ func cmdReset(flags []string) error {
 }
 
 func printUsage() {
-	fmt.Print(`dotm — dotfiles manager
+	fmt.Print(`dotm — dotfiles, packages, and services manager
 
 Usage:
   dotm <command> [flags]
 
 Commands:
   init       Run prompts interactively and create state cache
-  apply      Apply files, symlinks, perms, and scripts to dest
+  apply      Apply files, symlinks, perms, and scripts
   apply -n   Dry run — show what would be done without writing
+  apply pkgs  Apply only packages
+  apply services Apply only services
+  apply files Apply only files (same as default)
+  apply --all Apply everything (files + pkgs + services)
   diff       Show unified diff between source and dest
+  diff pkgs  Show packages that would be installed/removed
+  diff services Show services that would be enabled/disabled
+  diff --all Show all diffs (files + pkgs + services)
   status     Show sync state of managed files
+  status pkgs Show only package status
+  status services Show only service status
+  status files Show only file sync state (same as default)
   status -v  Show all files including clean ones
   status -q  Exit 1 if any problems, no output
+  status --all Show all statuses (files + pkgs + services)
   reset NAME Reset cached prompt value(s)
   reset --all Reset all cached values
   version    Print version and exit
   help       Show this help
+
+Scope words (files, pkgs, services) can be combined:
+  status files pkgs    Show files and packages
+  apply files pkgs     Apply files and packages
+  status --all         Show everything
 
 dotm looks for dotm.toml in the current directory or any parent.
 `)

@@ -79,7 +79,7 @@ func TestStatusCleanFile(t *testing.T) {
 	writeDestFile(t, destDir, "test.conf", "hello")
 
 	eng := buildEngine(t, sourceDir, destDir, state)
-	report, err := eng.Status()
+	report, err := eng.Status(ScopeAll, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestStatusModifiedFile(t *testing.T) {
 	writeDestFile(t, destDir, "test.conf", "modified content")
 
 	eng := buildEngine(t, sourceDir, destDir, state)
-	report, err := eng.Status()
+	report, err := eng.Status(ScopeAll, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestStatusMissingFile(t *testing.T) {
 	// Don't create in dest.
 
 	eng := buildEngine(t, sourceDir, destDir, state)
-	report, err := eng.Status()
+	report, err := eng.Status(ScopeAll, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestStatusOrphanFile(t *testing.T) {
 	state.Manifest.Files = []string{"old.conf"}
 
 	eng := buildEngine(t, sourceDir, destDir, state)
-	report, err := eng.Status()
+	report, err := eng.Status(ScopeAll, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestStatusOrphanNotInDest(t *testing.T) {
 	state.Manifest.Files = []string{"gone.conf"}
 
 	eng := buildEngine(t, sourceDir, destDir, state)
-	report, err := eng.Status()
+	report, err := eng.Status(ScopeAll, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestStatusTemplateFile(t *testing.T) {
 	writeDestFile(t, destDir, "greet.txt", "hello "+hostname)
 
 	eng := buildEngine(t, sourceDir, destDir, state)
-	report, err := eng.Status()
+	report, err := eng.Status(ScopeAll, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestStatusNoSourceDir(t *testing.T) {
 	os.RemoveAll(filepath.Join(sourceDir, "files"))
 
 	eng := buildEngine(t, sourceDir, destDir, state)
-	report, err := eng.Status()
+	report, err := eng.Status(ScopeAll, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestStatusMixed(t *testing.T) {
 	state.Manifest.Files = []string{"orphan.conf"}
 
 	eng := buildEngine(t, sourceDir, destDir, state)
-	report, err := eng.Status()
+	report, err := eng.Status(ScopeAll, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestStatusSortedOutput(t *testing.T) {
 	writeDestFile(t, destDir, "mmm.conf", "m")
 
 	eng := buildEngine(t, sourceDir, destDir, state)
-	report, err := eng.Status()
+	report, err := eng.Status(ScopeAll, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +289,7 @@ func TestStatusHasProblemsCleanOnly(t *testing.T) {
 	writeDestFile(t, destDir, "test.conf", "same")
 
 	eng := buildEngine(t, sourceDir, destDir, state)
-	report, err := eng.Status()
+	report, err := eng.Status(ScopeAll, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestStatusNestedFiles(t *testing.T) {
 	// Missing from dest.
 
 	eng := buildEngine(t, sourceDir, destDir, state)
-	report, err := eng.Status()
+	report, err := eng.Status(ScopeAll, false)
 	if err != nil {
 		t.Fatal(err)
 	}

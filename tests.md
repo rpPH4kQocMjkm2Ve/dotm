@@ -4,9 +4,11 @@
 
 | Package | File | What it tests |
 |---------|------|---------------|
-| `internal/config` | `config_test.go` | `expandHome` (tilde, tilde+path, absolute, relative, empty), `validate` (dest required, prompt types bool/string, unknown type, missing question, script path required, trigger default/on_change/unknown), `Load` (minimal, custom shell, tilde expansion, missing file, invalid TOML, missing dest, prompts, scripts) |
+| `internal/config` | `config_test.go` | `expandHome` (tilde, tilde+path, absolute, relative, empty), `validate` (dest required, prompt types bool/string, unknown type, missing question, script path required, trigger default/on_change/unknown), `Load` (minimal, custom shell, tilde expansion, missing file, invalid TOML, missing dest, prompts, scripts), managers/groups parsing, unknown manager error, no managers error, mixed package formats, prompts validation |
 | `internal/engine` | `status_test.go` | `Status` (clean/modified/missing/orphan files, orphan not in dest skipped, template rendering, no source dir, mixed statuses, sorted output, nested paths), `HasProblems`, `Counts` |
+| `internal/engine` | `pkg_engine_test.go` | `renderName` (plain, conditional true/false, parse error), `renderCached` (no template, variable substitution, missing key, syntax error) |
 | `internal/ignore` | `ignore_test.go` | `matchGlob` (exact, star, double-star suffix/prefix/middle/zero/deep, question mark, match-everything), `Match` (empty/single/multiple patterns), `Load` (no file, patterns with comments, template conditional true/false, comments and blanks skipped) |
+| `internal/manifest` | `manifest_test.go` | `Load`/`Save` (atomic writes, state file paths, packages + services round-trip), empty manifest load |
 | `internal/perms` | `parse_test.go` | `ParseRules` (empty, comments, blanks, single file/dir, skip marker, partial skip, multiple ordering, invalid modes, field count, empty pattern, line numbers, trailing slash) |
 | `internal/perms` | `glob_test.go` | `MatchGlob` (globstar nested/direct/start/middle/zero/many, single star, question mark, exact match, regex metacharacter escaping, edge cases) |
 | `internal/perms` | `apply_test.go` | `ComputeActions` (empty rules/managed, single match, dir-only/file-only rules, last-match-wins, skip mode, non-root dest, outside dest, no match, mixed files+dirs, specific overrides, dest dir skipped, deeply nested, specific group), `ApplyActions` — chmod file/dir/restrictive/nonexistent/skip-mode, chown root/non-root/group-only/nonexistent-user, combined chmod+chown, partial failure, dry run (**requires root**), full pipeline, idempotency, PAM safety regression |
@@ -20,10 +22,11 @@
 # All tests (no root)
 make test
 
-# Individual package
+# Individual packages
 go test ./internal/config/ -v
 go test ./internal/engine/ -v
 go test ./internal/ignore/ -v
+go test ./internal/manifest/ -v
 go test ./internal/perms/ -v      # skips root-only tests
 go test ./internal/prompt/ -v
 go test ./internal/tmpl/ -v

@@ -7,7 +7,7 @@ footer: dotm
 
 # NAME
 
-dotm — declarative dotfiles manager
+dotm — declarative dotfiles, packages, and services manager
 
 # SYNOPSIS
 
@@ -29,16 +29,19 @@ dotm — declarative dotfiles manager
 
 # DESCRIPTION
 
-**dotm** is a declarative dotfiles manager. It reads configuration from
-**dotm.toml**, walks a **files/** directory, renders templates, writes to a
-destination directory, applies permissions, and runs lifecycle scripts.
+**dotm** is a declarative dotfiles, packages, and services manager. It
+reads configuration from **dotm.toml**, walks a **files/** directory,
+renders templates, writes to a destination directory, applies permissions,
+runs lifecycle scripts, and manages packages and services via configurable
+managers.
 
 Configuration is read from **dotm.toml**, searched from the current
 directory upward. State is stored in **~/.local/state/dotm/**.
 
 Unlike other dotfiles managers, dotm uses normal file paths (no magic
-prefixes), delegates encryption to external tools (sops, age), and
-supports first-class permission management for system files.
+prefixes), delegates encryption to external tools (sops, age), supports
+first-class permission management for system files, and manages packages
+and services with zero hardcoded package managers or init systems.
 
 # COMMANDS
 
@@ -48,19 +51,61 @@ supports first-class permission management for system files.
     prompts.
 
 **apply**
-:   Walk **files/**, render templates, write to **dest**, create symlinks,
-    apply permissions from the **perms** file, and run lifecycle scripts.
-    Records a manifest for orphan detection.
+:   By default, walk **files/**, render templates, write to **dest**, create
+    symlinks, apply permissions from the **perms** file, and run lifecycle
+    scripts. Records a manifest for orphan detection.
+
+    When scope words are given, operate only on the specified targets:
+
+    **files**
+    :   Apply files, symlinks, perms, and scripts (default behavior).
+
+    **pkgs**
+    :   Install/remove packages via managers.
+
+    **services**
+    :   Enable/disable services via managers.
+
+    **--all**
+    :   Apply everything (files + pkgs + services).
 
     **-n**, **--dry-run**
     :   Show what would happen without making any changes.
 
 **diff**
-:   Show a unified diff between rendered source and current destination
-    for each managed file.
+:   By default, show a unified diff between rendered source and current
+    destination for each managed file. With scope words, also show package
+    and service changes:
+
+    **files**
+    :   Show file diffs only (default).
+
+    **pkgs**
+    :   Show packages that would be installed/removed.
+
+    **services**
+    :   Show services that would be enabled/disabled.
+
+    **--all**
+    :   Show all diffs (files + pkgs + services).
 
 **status**
-:   Show the sync state of all managed files. Four states are reported:
+:   By default, show the sync state of all managed files. With scope words,
+    show package and service status:
+
+    **files**
+    :   Show file sync state only (default).
+
+    **pkgs**
+    :   Show package status only.
+
+    **services**
+    :   Show service status only.
+
+    **--all**
+    :   Show everything (files + pkgs + services).
+
+    Four states are reported for files:
 
     **clean**
     :   Destination matches rendered source.
@@ -73,6 +118,9 @@ supports first-class permission management for system files.
 
     **orphan**
     :   Previously deployed, no longer in source, still in destination.
+
+    Packages report as **OK**, **MISSING**, or **OBSOLETE**.
+    Services report as **ENABLED**, **DISABLED**, or **OBSOLETE**.
 
     **-v**, **--verbose**
     :   Include clean files in the output.
@@ -191,31 +239,79 @@ etc/security/          0700   root   root
 Trailing **/** matches directories only. No trailing **/** matches files
 only. **-** means don't change that attribute. Last matching rule wins.
 
+## Package and service management
+
+Packages and services are managed via declarative **managers**. A manager
+defines command templates for **check**, **install**, **remove**, **enable**,
+and **disable**. Groups (e.g. **[pacman]**, **[systemd]**) reference a
+manager by name and list packages or services.
+
+```toml
+[managers.pacman]
+check   = "pacman -Q {{.Name}}"
+install = "sudo pacman -S --needed {{.Name}}"
+remove  = "sudo pacman -Rns {{.Name}}"
+
+[managers.systemd]
+check   = "systemctl is-enabled {{.Name}}"
+enable  = "sudo systemctl enable {{.Name}}"
+disable = "sudo systemctl disable {{.Name}}"
+
+[pacman]
+packages = ["git", "neovim", "{{ if .laptop }}brightnessctl{{ end }}"]
+
+[systemd]
+services = ["firewalld", "sshd"]
+```
+
+Package and service names may contain Go template expressions. If a name
+renders to an empty string, the entry is skipped.
+
+Template variables for commands:
+- **{{.Name}}** — raw package/service name
+- In check/install/remove/enable/disable: **{{.Name}}** is shell-quoted
+
 # EXAMPLES
 
 Initialize a new dotfiles repo:
 
     dotm init
 
-Deploy everything:
+Deploy files, symlinks, perms, and scripts:
 
     dotm apply
+
+Deploy everything including packages and services:
+
+    dotm apply --all
 
 Preview changes:
 
     dotm apply -n
 
-Check current state:
+Check current state of files:
 
     dotm status
+
+Check package status:
+
+    dotm status pkgs
 
 Show all files including clean:
 
     dotm status -v
 
+Show everything:
+
+    dotm status --all
+
 Diff against rendered source:
 
     dotm diff
+
+Show what packages would be installed/removed:
+
+    dotm diff pkgs
 
 # EXIT STATUS
 

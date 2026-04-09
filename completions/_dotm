@@ -9,9 +9,9 @@ _dotm() {
         '(- *)'{-V,--version}'[Show version]' \
         '1:command:((
             init\:"Run prompts, create state cache"
-            apply\:"Deploy files, symlinks, perms, scripts"
+            apply\:"Deploy files, symlinks, perms, scripts, packages, services"
             diff\:"Show unified diff between source and dest"
-            status\:"Show sync state of managed files"
+            status\:"Show sync state of managed files, packages, services"
             reset\:"Reset cached prompt value(s)"
         ))' \
         '*::arg:->args' \
@@ -27,17 +27,20 @@ _dotm() {
                 apply)
                     _arguments \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without making changes]' \
-                        '(-h --help)'{-h,--help}'[Show this help]'
+                        '(-h --help)'{-h,--help}'[Show this help]' \
+                        '*:scope:(files pkgs services --all)'
                     ;;
                 status)
                     _arguments \
                         '(-v --verbose)'{-v,--verbose}'[Include clean files]' \
                         '(-q --quiet)'{-q,--quiet}'[Exit 1 if problems, no output]' \
-                        '(-h --help)'{-h,--help}'[Show this help]'
+                        '(-h --help)'{-h,--help}'[Show this help]' \
+                        '*:scope:(files pkgs services --all)'
                     ;;
                 diff)
                     _arguments \
-                        '(-h --help)'{-h,--help}'[Show this help]'
+                        '(-h --help)'{-h,--help}'[Show this help]' \
+                        '*:scope:(files pkgs services --all)'
                     ;;
                 reset)
                     _arguments \

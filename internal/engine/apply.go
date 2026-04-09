@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"text/template"
 
 	"dotm/internal/config"
 	"dotm/internal/ignore"
+	"dotm/internal/manifest"
 	"dotm/internal/perms"
 	"dotm/internal/prompt"
 	"dotm/internal/safetemp"
@@ -24,9 +26,11 @@ type Engine struct {
 	state     *prompt.State
 	data      map[string]any
 	sourceDir string
+	configDir string
 	filesDir  string
 	ig        *ignore.Ignore
 	dryRun    bool
+	tmplCache map[string]*template.Template
 }
 
 // New creates an Engine from a loaded config, resolved state, and source dir.
@@ -46,6 +50,7 @@ func New(cfg *config.Config, state *prompt.State, sourceDir string, dryRun bool)
 		state:     state,
 		data:      data,
 		sourceDir: sourceDir,
+		configDir: sourceDir,
 		filesDir:  filepath.Join(sourceDir, "files"),
 		ig:        ig,
 		dryRun:    dryRun,
@@ -54,31 +59,63 @@ func New(cfg *config.Config, state *prompt.State, sourceDir string, dryRun bool)
 
 // Apply walks files/, copies/renders to dest, creates symlinks,
 // applies perms, runs scripts, and records the manifest.
-func (e *Engine) Apply() error {
-	// 1. Walk files/ and copy/render.
-	written, err := e.walkAndWrite()
-	if err != nil {
-		return fmt.Errorf("apply files: %w", err)
+func (e *Engine) Apply(scope ScopeBit) error {
+	// Steps 1-5: file operations (only when dest is configured and file scope).
+	if scope.Has(ScopeFiles) && e.cfg.Dest != "" {
+		// 1. Walk files/ and copy/render.
+		written, err := e.walkAndWrite()
+		if err != nil {
+			return fmt.Errorf("apply files: %w", err)
+		}
+
+		// 2. Create symlinks.
+		if err := e.applySymlinks(); err != nil {
+			return fmt.Errorf("apply symlinks: %w", err)
+		}
+
+		// 3. Apply permissions.
+		if err := e.applyPerms(written); err != nil {
+			return fmt.Errorf("apply perms: %w", err)
+		}
+
+		// 4. Run scripts.
+		if err := e.runScripts(); err != nil {
+			return fmt.Errorf("run scripts: %w", err)
+		}
+
+		// 5. Record file manifest (skip on dry run).
+		if !e.dryRun {
+			e.recordManifest(written)
+		}
 	}
 
-	// 2. Create symlinks.
-	if err := e.applySymlinks(); err != nil {
-		return fmt.Errorf("apply symlinks: %w", err)
-	}
+	// 6. Apply packages and services (if managers are defined).
+	if len(e.cfg.Managers) > 0 && (scope.Has(ScopePkgs) || scope.Has(ScopeServices)) {
+		var pkgEntries []manifest.PackageEntry
+		var svcEntries []manifest.ServiceEntry
+		var allRemoveErrs []error
 
-	// 3. Apply permissions.
-	if err := e.applyPerms(written); err != nil {
-		return fmt.Errorf("apply perms: %w", err)
-	}
+		if scope.Has(ScopePkgs) {
+			var pkgErrs []error
+			pkgEntries, pkgErrs = e.applyPackages(e.dryRun)
+			allRemoveErrs = append(allRemoveErrs, pkgErrs...)
+		}
+		if scope.Has(ScopeServices) {
+			var svcErrs []error
+			svcEntries, svcErrs = e.applyServices(e.dryRun)
+			allRemoveErrs = append(allRemoveErrs, svcErrs...)
+		}
 
-	// 4. Run scripts.
-	if err := e.runScripts(); err != nil {
-		return fmt.Errorf("run scripts: %w", err)
-	}
+		// Save package manifest (only if no errors and not dry run).
+		if len(allRemoveErrs) == 0 && !e.dryRun {
+			if err := e.savePkgManifest(pkgEntries, svcEntries); err != nil {
+				return fmt.Errorf("save package manifest: %w", err)
+			}
+		}
 
-	// 5. Record manifest (skip on dry run — nothing was actually written).
-	if !e.dryRun {
-		e.recordManifest(written)
+		if len(allRemoveErrs) > 0 {
+			return fmt.Errorf("failed to install/remove/enable/disable %d item(s): fix the errors and re-run apply", len(allRemoveErrs))
+		}
 	}
 
 	return nil
@@ -121,62 +158,75 @@ func (e *Engine) recordManifest(writtenAbs []string) {
 	e.state.SetManifest(files, dirs, symlinks)
 }
 
-// Diff shows a unified diff between rendered source and current dest.
-func (e *Engine) Diff() error {
-	if _, err := os.Stat(e.filesDir); os.IsNotExist(err) {
-		return nil
-	}
-
-	return filepath.Walk(e.filesDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		rel, err := filepath.Rel(e.filesDir, path)
-		if err != nil {
-			return err
-		}
-		if rel == "." {
-			return nil
-		}
-
-		destRel := stripTmplSuffix(rel)
-
-		if e.ig.Match(destRel) {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		if info.IsDir() {
-			return nil
-		}
-
-		destPath := filepath.Join(e.cfg.Dest, destRel)
-
-		// Get rendered source content.
-		srcContent, err := e.fileContent(path, rel)
-		if err != nil {
-			return fmt.Errorf("%s: %w", rel, err)
-		}
-
-		// Get current dest content.
-		destContent, err := os.ReadFile(destPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				destContent = nil
-			} else {
+// Diff shows a unified diff between rendered source and current dest,
+// and package/service changes.
+func (e *Engine) Diff(scope ScopeBit) error {
+	if scope.Has(ScopeFiles) {
+		if _, err := os.Stat(e.filesDir); err == nil {
+			err := filepath.Walk(e.filesDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
 				return err
 			}
-		}
 
-		if bytes.Equal(srcContent, destContent) {
-			return nil
-		}
+			rel, err := filepath.Rel(e.filesDir, path)
+			if err != nil {
+				return err
+			}
+			if rel == "." {
+				return nil
+			}
 
-		return showDiff(destPath, destRel, destContent, srcContent)
-	})
+			destRel := stripTmplSuffix(rel)
+
+			if e.ig.Match(destRel) {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
+			if info.IsDir() {
+				return nil
+			}
+
+			destPath := filepath.Join(e.cfg.Dest, destRel)
+
+			srcContent, err := e.fileContent(path, rel)
+			if err != nil {
+				return fmt.Errorf("%s: %w", rel, err)
+			}
+
+			destContent, err := os.ReadFile(destPath)
+			if err != nil {
+				if os.IsNotExist(err) {
+					destContent = nil
+				} else {
+					return err
+				}
+			}
+
+			if bytes.Equal(srcContent, destContent) {
+				return nil
+			}
+
+			return showDiff(destPath, destRel, destContent, srcContent)
+		})
+		if err != nil {
+			return err
+		}
+		}
+	}
+
+	if len(e.cfg.Managers) > 0 {
+		if scope.Has(ScopePkgs) {
+			e.diffPackages()
+		}
+		if scope.Has(ScopeServices) {
+			e.diffServices()
+		}
+	}
+
+	return nil
 }
 
 // walkAndWrite processes all files in files/ and writes them to dest.
