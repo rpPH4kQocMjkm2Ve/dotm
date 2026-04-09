@@ -38,7 +38,20 @@ func run() error {
 		return cmdDiff()
 	case "status":
 		return cmdStatus(flags)
+	case "reset":
+		return cmdReset(flags)
 	case "help", "--help", "-h":
+		if len(flags) > 0 && flags[0] == "reset" {
+			fmt.Println(`Usage: dotm reset <name> [name...]
+       dotm reset --all
+
+Reset cached prompt value(s). Run dotm init to re-answer prompts.
+
+Arguments:
+  NAME     One or more prompt names to reset
+  --all    Reset all cached values`)
+			return nil
+		}
 		printUsage()
 		return nil
 	case "version", "--version", "-V":
@@ -220,7 +233,7 @@ func cmdStatus(flags []string) error {
 		if report.HasProblems() {
 			os.Exit(1)
 		}
-		return nil
+		return nil //nolint:unreachable // quiet mode with problems: exit above
 	}
 
 	engine.PrintReport(report, verbose)
@@ -259,6 +272,62 @@ func usageError() error {
 	return fmt.Errorf("no command specified\nrun 'dotm help' for usage")
 }
 
+func cmdReset(flags []string) error {
+	if len(flags) == 0 {
+		return fmt.Errorf("reset requires prompt names or --all\nrun 'dotm help reset' for usage")
+	}
+
+	all := false
+	var names []string
+	for _, f := range flags {
+		switch f {
+		case "--all":
+			all = true
+		default:
+			names = append(names, f)
+		}
+	}
+
+	if all && len(names) > 0 {
+		return fmt.Errorf("cannot mix --all with prompt names")
+	}
+
+	sourceDir, err := findSourceDir()
+	if err != nil {
+		return err
+	}
+
+	state, err := prompt.LoadState(sourceDir)
+	if err != nil {
+		return err
+	}
+
+	if all {
+		state.Data = make(map[string]any)
+	} else {
+		for _, name := range names {
+			if _, ok := state.Data[name]; !ok {
+				return fmt.Errorf("prompt %q not found in state", name)
+			}
+			delete(state.Data, name)
+		}
+	}
+
+	if err := state.Save(sourceDir); err != nil {
+		return fmt.Errorf("save state: %w", err)
+	}
+
+	if all {
+		fmt.Println("All prompts reset.")
+	} else {
+		for _, name := range names {
+			fmt.Printf("Prompt %q reset.\n", name)
+		}
+	}
+
+	return nil
+}
+
 func printUsage() {
 	fmt.Print(`dotm — dotfiles manager
 
@@ -273,6 +342,8 @@ Commands:
   status     Show sync state of managed files
   status -v  Show all files including clean ones
   status -q  Exit 1 if any problems, no output
+  reset NAME Reset cached prompt value(s)
+  reset --all Reset all cached values
   version    Print version and exit
   help       Show this help
 

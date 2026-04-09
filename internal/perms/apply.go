@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/user"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 // PermAction is a computed permission action for a single target path.
@@ -80,8 +78,9 @@ func ComputeActions(
 
 		mode := -1
 		if matched.Mode != "" {
-			parsed, _ := strconv.ParseInt(matched.Mode, 8, 32)
-			mode = int(parsed)
+			if parsed, err := strconv.ParseInt(matched.Mode, 8, 32); err == nil {
+				mode = int(parsed)
+			}
 		}
 
 		actions = append(actions, PermAction{
@@ -135,7 +134,12 @@ func ApplyActions(actions []PermAction, dryRun bool) (bool, []string) {
 					errors = append(errors, fmt.Sprintf("chown %s:%s %s: %v", a.Owner, a.Group, a.Path, err))
 					continue
 				}
-				uid, _ = strconv.Atoi(u.Uid)
+				if parsed, err := strconv.Atoi(u.Uid); err == nil {
+					uid = parsed
+				} else {
+					errors = append(errors, fmt.Sprintf("chown %s:%s %s: invalid uid %q", a.Owner, a.Group, a.Path, u.Uid))
+					continue
+				}
 			}
 
 			if a.Group != "" {
@@ -144,7 +148,12 @@ func ApplyActions(actions []PermAction, dryRun bool) (bool, []string) {
 					errors = append(errors, fmt.Sprintf("chown %s:%s %s: %v", a.Owner, a.Group, a.Path, err))
 					continue
 				}
-				gid, _ = strconv.Atoi(g.Gid)
+				if parsed, err := strconv.Atoi(g.Gid); err == nil {
+					gid = parsed
+				} else {
+					errors = append(errors, fmt.Sprintf("chown %s:%s %s: invalid gid %q", a.Owner, a.Group, a.Path, g.Gid))
+					continue
+				}
 			}
 
 			if err := os.Chown(a.Path, uid, gid); err != nil {
@@ -162,33 +171,4 @@ func isDir(path string) bool {
 		return false
 	}
 	return info.IsDir()
-}
-
-// CollectManagedPaths walks destDir and returns all paths that exist.
-// Used to build the managed paths list for ComputeActions when
-// the caller doesn't have an explicit list.
-func CollectManagedPaths(destDir string) ([]string, error) {
-	var paths []string
-	err := filepath.WalkDir(destDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		// Skip the root directory itself.
-		if path == destDir {
-			return nil
-		}
-		paths = append(paths, path)
-		return nil
-	})
-	return paths, err
-}
-
-// FileMode returns the current permission bits of a file.
-// Returns -1 on error.
-func FileMode(path string) int {
-	var st syscall.Stat_t
-	if err := syscall.Stat(path, &st); err != nil {
-		return -1
-	}
-	return int(st.Mode & 0o7777)
 }

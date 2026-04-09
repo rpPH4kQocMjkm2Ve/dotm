@@ -82,10 +82,9 @@ func TestSecureDirReusesExisting(t *testing.T) {
 }
 
 func TestSecureDirFallbackToHome(t *testing.T) {
-	// Set XDG_RUNTIME_DIR to an unwritable path
-	t.Setenv("XDG_RUNTIME_DIR", "/nonexistent/unwritable/path")
+	// Clear XDG_RUNTIME_DIR so only home-based fallback is available
+	t.Setenv("XDG_RUNTIME_DIR", "")
 
-	// Should fall back to home-based directory
 	dir := SecureDir()
 	if dir == "" {
 		t.Fatal("expected fallback to home-based directory")

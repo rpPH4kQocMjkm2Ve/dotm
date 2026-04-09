@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"dotm/internal/config"
@@ -106,8 +107,13 @@ func (e *Engine) recordManifest(writtenAbs []string) {
 	}
 
 	// Symlinks defined in config.
-	var symlinks []string
+	symlinkKeys := make([]string, 0, len(e.cfg.Symlinks))
 	for linkRel := range e.cfg.Symlinks {
+		symlinkKeys = append(symlinkKeys, linkRel)
+	}
+	sort.Strings(symlinkKeys)
+	var symlinks []string
+	for _, linkRel := range symlinkKeys {
 		symlinks = append(symlinks, linkRel)
 	}
 
@@ -264,7 +270,15 @@ func (e *Engine) fileContent(srcPath, rel string) ([]byte, error) {
 
 // applySymlinks creates symlinks defined in [symlinks].
 func (e *Engine) applySymlinks() error {
-	for linkRel, targetTmpl := range e.cfg.Symlinks {
+	// Sort keys for deterministic order.
+	links := make([]string, 0, len(e.cfg.Symlinks))
+	for linkRel := range e.cfg.Symlinks {
+		links = append(links, linkRel)
+	}
+	sort.Strings(links)
+
+	for _, linkRel := range links {
+		targetTmpl := e.cfg.Symlinks[linkRel]
 		// Target may contain template expressions like {{ .homeDir }}.
 		rendered, err := tmpl.Render(targetTmpl, "symlink:"+linkRel, e.data)
 		if err != nil {
@@ -361,7 +375,6 @@ func (e *Engine) runScripts() error {
 			if e.state.GetScriptHash(sc.Path) == hash {
 				continue
 			}
-			e.state.SetScriptHash(sc.Path, hash)
 		}
 
 		if e.dryRun {
@@ -371,6 +384,12 @@ func (e *Engine) runScripts() error {
 
 		if err := execScript(content, e.cfg.Shell); err != nil {
 			return fmt.Errorf("script %s: %w", sc.Path, err)
+		}
+
+		// Record hash AFTER successful execution so a failed script
+		// will be retried on the next run.
+		if sc.Trigger == "on_change" {
+			e.state.SetScriptHash(sc.Path, prompt.HashContent(content))
 		}
 	}
 

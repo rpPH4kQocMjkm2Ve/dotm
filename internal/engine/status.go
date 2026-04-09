@@ -92,7 +92,10 @@ func (e *Engine) Status() (*StatusReport, error) {
 			continue
 		}
 
-		srcRel, _ := filepath.Rel(e.filesDir, srcPath)
+		srcRel, err := filepath.Rel(e.filesDir, srcPath)
+		if err != nil {
+			srcRel = rel
+		}
 		srcContent, err := e.fileContent(srcPath, srcRel)
 		if err != nil {
 			return nil, fmt.Errorf("render %s: %w", rel, err)
@@ -226,6 +229,9 @@ func FormatStatus(s FileStatus) string {
 // PrintReport writes the status report to stdout.
 // If verbose is false, only non-clean entries are shown.
 func PrintReport(report *StatusReport, verbose bool) {
+	stat, err := os.Stdout.Stat()
+	isTerminal := err == nil && (stat.Mode()&os.ModeCharDevice) != 0
+
 	for _, entry := range report.Entries {
 		if !verbose && entry.Status == StatusClean {
 			continue
@@ -233,23 +239,24 @@ func PrintReport(report *StatusReport, verbose bool) {
 
 		var color string
 		var reset string
-		switch entry.Status {
-		case StatusClean:
-			color = "\033[32m" // green
-			reset = "\033[0m"
-		case StatusModified:
-			color = "\033[33m" // yellow
-			reset = "\033[0m"
-		case StatusMissing:
-			color = "\033[31m" // red
-			reset = "\033[0m"
-		case StatusOrphan:
-			color = "\033[35m" // magenta
-			reset = "\033[0m"
+		if isTerminal {
+			switch entry.Status {
+			case StatusClean:
+				color = "\033[32m"
+				reset = "\033[0m"
+			case StatusModified:
+				color = "\033[33m"
+				reset = "\033[0m"
+			case StatusMissing:
+				color = "\033[31m"
+				reset = "\033[0m"
+			case StatusOrphan:
+				color = "\033[35m"
+				reset = "\033[0m"
+			}
 		}
 
 		label := FormatStatus(entry.Status)
-		// Pad label to 10 chars for alignment.
 		padded := label + strings.Repeat(" ", 10-len(label))
 		fmt.Printf("  %s%s%s %s\n", color, padded, reset, entry.RelPath)
 	}

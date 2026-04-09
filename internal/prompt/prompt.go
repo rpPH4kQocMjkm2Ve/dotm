@@ -38,7 +38,7 @@ func stateDir() (string, error) {
 		return "", err
 	}
 	dir := filepath.Join(home, ".local", "state", "dotm")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
 	return dir, nil
@@ -92,20 +92,33 @@ func LoadState(sourceDir string) (*State, error) {
 	return s, nil
 }
 
-// Save writes the state to disk.
+// Save writes the state to disk atomically.
 func (s *State) Save(sourceDir string) error {
 	path, err := stateFile(sourceDir)
 	if err != nil {
 		return err
 	}
 
-	f, err := os.Create(path)
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "state-*.tmp")
 	if err != nil {
-		return err
+		return fmt.Errorf("create temp: %w", err)
 	}
-	defer f.Close()
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
 
-	return toml.NewEncoder(f).Encode(s)
+	if err := toml.NewEncoder(tmp).Encode(s); err != nil {
+		tmp.Close()
+		return fmt.Errorf("encode: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("rename: %w", err)
+	}
+	return nil
 }
 
 // SetManifest replaces the manifest with new lists of deployed paths.
@@ -153,15 +166,15 @@ func Resolve(cfg *config.Config, s *State, r io.Reader, w io.Writer) (bool, erro
 				return changed, err
 			}
 			s.Data[name] = val
+			changed = true
 		case "string":
 			val, err := askString(scanner, w, p.Question)
 			if err != nil {
 				return changed, err
 			}
 			s.Data[name] = val
+			changed = true
 		}
-
-		changed = true
 	}
 
 	return changed, nil
@@ -208,28 +221,23 @@ func BuildData(s *State, sourceDir string) (map[string]any, error) {
 		data[k] = coerceValue(v)
 	}
 
-	// Built-in variables.
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
+	// Built-in variables — use fallbacks on error.
+	if home, err := os.UserHomeDir(); err == nil {
+		data["homeDir"] = home
 	}
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, err
+	if hostname, err := os.Hostname(); err == nil {
+		data["hostname"] = hostname
 	}
 	username := os.Getenv("USER")
 	if username == "" {
 		username = os.Getenv("LOGNAME")
 	}
+	data["username"] = username
 
 	abs, err := filepath.Abs(sourceDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("abs path %s: %w", sourceDir, err)
 	}
-
-	data["homeDir"] = home
-	data["hostname"] = hostname
-	data["username"] = username
 	data["sourceDir"] = abs
 
 	return data, nil

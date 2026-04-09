@@ -1,6 +1,7 @@
 package ignore
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ type Ignore struct {
 // Load reads and renders ignore.tmpl from sourceDir, then parses
 // the resulting lines into glob patterns.
 // Returns an empty Ignore (matches nothing) if the file doesn't exist.
+// Returns an error if any pattern is malformed.
 func Load(sourceDir string, data map[string]any) (*Ignore, error) {
 	path := filepath.Join(sourceDir, "ignore.tmpl")
 
@@ -29,10 +31,14 @@ func Load(sourceDir string, data map[string]any) (*Ignore, error) {
 	}
 
 	var patterns []string
-	for _, line := range strings.Split(string(rendered), "\n") {
+	for i, line := range strings.Split(string(rendered), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
+		}
+		// Validate pattern syntax upfront.
+		if _, err := filepath.Match(line, "validate"); err != nil {
+			return nil, fmt.Errorf("ignore.tmpl line %d: invalid pattern %q: %w", i+1, line, err)
 		}
 		patterns = append(patterns, line)
 	}
@@ -55,6 +61,7 @@ func (ig *Ignore) Match(relPath string) bool {
 
 // matchGlob tests a single pattern against a path.
 // Supports ** (matches zero or more path segments), * and ? (single segment).
+// Patterns are validated at Load time, so errors here are impossible.
 func matchGlob(pattern, path string) bool {
 	// No ** — use filepath.Match directly.
 	if !strings.Contains(pattern, "**") {
