@@ -122,3 +122,137 @@ func TestLoadInvalidTOML(t *testing.T) {
 		t.Errorf("expected 0 services, got %d", len(m.Services))
 	}
 }
+
+// ─── decodePackageEntries / decodeServiceEntries ────────────────────────────
+
+func TestDecodePackageEntries(t *testing.T) {
+	// Test []map[string]any
+	v1 := []map[string]any{
+		{"name": "git", "manager": "pacman"},
+		{"name": "zsh", "manager": "pacman"},
+	}
+	result1 := decodePackageEntries(v1)
+	if len(result1) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(result1))
+	}
+	if result1[0].Name != "git" || result1[0].Manager != "pacman" {
+		t.Errorf("first entry = %+v, want git/pacman", result1[0])
+	}
+
+	// Test []any
+	v2 := []any{
+		map[string]any{"name": "vim", "manager": "apt"},
+		"not a map", // should be skipped
+	}
+	result2 := decodePackageEntries(v2)
+	if len(result2) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result2))
+	}
+	if result2[0].Name != "vim" {
+		t.Errorf("entry = %+v, want vim", result2[0])
+	}
+
+	// Test invalid type
+	result3 := decodePackageEntries("invalid")
+	if len(result3) != 0 {
+		t.Errorf("expected 0 entries for invalid type, got %d", len(result3))
+	}
+
+	// Test missing fields
+	v3 := []map[string]any{
+		{"foo": "bar"},
+	}
+	result4 := decodePackageEntries(v3)
+	if len(result4) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result4))
+	}
+	if result4[0].Name != "" || result4[0].Manager != "" {
+		t.Errorf("entry should have empty fields, got %+v", result4[0])
+	}
+}
+
+func TestDecodeServiceEntries(t *testing.T) {
+	// Test []map[string]any
+	v1 := []map[string]any{
+		{"name": "firewalld", "manager": "systemd"},
+	}
+	result1 := decodeServiceEntries(v1)
+	if len(result1) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result1))
+	}
+	if result1[0].Name != "firewalld" || result1[0].Manager != "systemd" {
+		t.Errorf("entry = %+v, want firewalld/systemd", result1[0])
+	}
+
+	// Test []any with mixed types
+	v2 := []any{
+		map[string]any{"name": "sshd", "manager": "systemd"},
+		42, // should be skipped
+	}
+	result2 := decodeServiceEntries(v2)
+	if len(result2) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result2))
+	}
+
+	// Test invalid type
+	result3 := decodeServiceEntries(123)
+	if len(result3) != 0 {
+		t.Errorf("expected 0 entries for invalid type, got %d", len(result3))
+	}
+}
+
+// ─── Save merges with existing state ────────────────────────────────────────
+
+func TestSaveMergesWithExisting(t *testing.T) {
+	dir := t.TempDir()
+	testStateDir = dir
+	t.Cleanup(func() { testStateDir = "" })
+
+	// First save with packages.
+	m1 := &PkgManifest{
+		Packages: []PackageEntry{{Name: "git", Manager: "pacman"}},
+	}
+	if err := Save(dir, m1); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Now save with services only (should merge).
+	m2 := &PkgManifest{
+		Services: []ServiceEntry{{Name: "firewalld", Manager: "systemd"}},
+	}
+	if err := Save(dir, m2); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Load and verify both are present.
+	loaded, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// Note: Save overwrites pkg_manifest, so only services should be there.
+	if len(loaded.Services) != 1 {
+		t.Errorf("expected 1 service, got %d", len(loaded.Services))
+	}
+}
+
+func TestSaveEmptyManifest(t *testing.T) {
+	dir := t.TempDir()
+	testStateDir = dir
+	t.Cleanup(func() { testStateDir = "" })
+
+	m := &PkgManifest{}
+	if err := Save(dir, m); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(loaded.Packages) != 0 {
+		t.Errorf("expected 0 packages, got %d", len(loaded.Packages))
+	}
+	if len(loaded.Services) != 0 {
+		t.Errorf("expected 0 services, got %d", len(loaded.Services))
+	}
+}

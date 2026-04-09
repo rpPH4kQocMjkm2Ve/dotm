@@ -4,15 +4,18 @@
 
 | Package | File | What it tests |
 |---------|------|---------------|
-| `internal/config` | `config_test.go` | `expandHome` (tilde, tilde+path, absolute, relative, empty), `validate` (dest required, prompt types bool/string, unknown type, missing question, script path required, trigger default/on_change/unknown), `Load` (minimal, custom shell, tilde expansion, missing file, invalid TOML, missing dest, prompts, scripts), managers/groups parsing, unknown manager error, no managers error, mixed package formats, prompts validation |
-| `internal/engine` | `status_test.go` | `Status` (clean/modified/missing/orphan files, orphan not in dest skipped, template rendering, no source dir, mixed statuses, sorted output, nested paths), `HasProblems`, `Counts` |
-| `internal/engine` | `pkg_engine_test.go` | `renderName` (plain, conditional true/false, parse error), `renderCached` (no template, variable substitution, missing key, syntax error) |
+| `cmd/dotm` | `version_test.go` | `cmdVersion` (version output) |
+| `internal/config` | `config_test.go` | `expandHome` (tilde, tilde+path, absolute, relative, empty), `validate` (dest required, prompt types bool/string, unknown type, missing question, script path required, trigger default/on_change/unknown), `Load` (minimal, custom shell, tilde expansion, missing file, invalid TOML, missing dest, prompts, scripts), managers/groups parsing, unknown manager error, no managers error, mixed package formats, prompts validation, `parseGroup` (packages only, services only, mixed, invalid type, missing name field, unknown keys), `Packages`/`Services`/`HasPackages`/`HasServices` (resolved entries, empty config) |
+| `internal/engine` | `status_test.go` | `Status` (clean/modified/missing/orphan files, orphan not in dest skipped, template rendering, no source dir, mixed statuses, sorted output, nested paths), `HasProblems`, `Counts`, `FormatStatus` (all statuses + unknown), `PrintReport` (verbose, non-verbose, empty, with packages) |
+| `internal/engine` | `pkg_engine_test.go` | `renderName` (plain, conditional true/false, parse error), `renderCached` (no template, variable substitution, missing key, syntax error), `shellQuote` (simple, spaces, quotes, empty), `rawData`/`shellData` (data merging) |
+| `internal/engine` | `scope_test.go` | `ParseScope` (empty, file/files, pkg/pkgs/package/packages, service/services, --all, combined scopes, flags preservation, unknown scope error), `ScopeBit.Has` (bitmask operations) |
+| `internal/engine` | `apply_test.go` | `isValidShell` (bare names, absolute paths, existing/nonexistent, executable/non-executable), `applyPerms` fallback (no perms file → default 0o644, explicit perms override, dry run), `walkAndWrite` initial permissions (0o600 before applyPerms), `stripTmplSuffix` (with/without suffix, nested, empty), `writeTmp` (content, empty, secure dir), `fileContent` (plain files, templates), `execScript` (invalid shell, valid bash script) |
 | `internal/ignore` | `ignore_test.go` | `matchGlob` (exact, star, double-star suffix/prefix/middle/zero/deep, question mark, match-everything), `Match` (empty/single/multiple patterns), `Load` (no file, patterns with comments, template conditional true/false, comments and blanks skipped) |
-| `internal/manifest` | `manifest_test.go` | `Load`/`Save` (atomic writes, state file paths, packages + services round-trip), empty manifest load |
+| `internal/manifest` | `manifest_test.go` | `Load`/`Save` (atomic writes, state file paths, packages + services round-trip), empty manifest load, `decodePackageEntries` ([]map, []any with mixed types, invalid types, missing fields), `decodeServiceEntries` ([]map, []any with mixed types, invalid types), save merges with existing state, empty manifest save |
 | `internal/perms` | `parse_test.go` | `ParseRules` (empty, comments, blanks, single file/dir, skip marker, partial skip, multiple ordering, invalid modes, field count, empty pattern, line numbers, trailing slash) |
 | `internal/perms` | `glob_test.go` | `MatchGlob` (globstar nested/direct/start/middle/zero/many, single star, question mark, exact match, regex metacharacter escaping, edge cases) |
 | `internal/perms` | `apply_test.go` | `ComputeActions` (empty rules/managed, single match, dir-only/file-only rules, last-match-wins, skip mode, non-root dest, outside dest, no match, mixed files+dirs, specific overrides, dest dir skipped, deeply nested, specific group), `ApplyActions` — chmod file/dir/restrictive/nonexistent/skip-mode, chown root/non-root/group-only/nonexistent-user, combined chmod+chown, partial failure, dry run (**requires root**), full pipeline, idempotency, PAM safety regression |
-| `internal/prompt` | `prompt_test.go` | `coerceValue` (bool, int64, float64 whole/fractional, string true/false/regular, unknown type), `HashContent` (deterministic, different content, empty), `FormatPromptValue` (bool, string, other), `Resolve` (no prompts, cached skip, bool yes/no, string, retry invalid input, multiple prompts sorted, EOF error), `SetManifest` (sorting), `ResetPrompt`, `GetScriptHash`/`SetScriptHash` |
+| `internal/prompt` | `prompt_test.go` | `coerceValue` (bool, int64, float64 whole/fractional, string true/false/regular, unknown type), `HashContent` (deterministic, different content, empty), `FormatPromptValue` (bool, string, other), `Resolve` (no prompts, cached skip, bool yes/no, string, retry invalid input, multiple prompts sorted, EOF error), `SetManifest` (sorting), `ResetPrompt`, `GetScriptHash`/`SetScriptHash`, State Load/Save, `BuildData` (prompt data merge, built-in variables), `FormatStateFile` |
 | `internal/safetemp` | `safetemp_test.go` | `SecureDir` (directory creation with 0700, XDG_RUNTIME_DIR priority, home fallback, file creation), `secureDirs` (order, XDG vs home), reuse of existing directory, graceful fallback when all paths unwritable |
 | `internal/tmpl` | `tmpl_test.go` | `Render` (plain text, variable substitution, missing key error, conditional true/false, invalid template), `RenderFile` (normal, missing file), template functions: `joinPath`, `hasKey` exists/missing, `replace`, `fromYaml` valid/invalid, `output` echo/trim-newline/nonexistent-command |
 
@@ -23,12 +26,14 @@
 make test
 
 # Individual packages
+go test ./cmd/dotm/ -v
 go test ./internal/config/ -v
 go test ./internal/engine/ -v
 go test ./internal/ignore/ -v
 go test ./internal/manifest/ -v
 go test ./internal/perms/ -v      # skips root-only tests
 go test ./internal/prompt/ -v
+go test ./internal/safetemp/ -v
 go test ./internal/tmpl/ -v
 
 # Perms tests that require root (chmod/chown/full pipeline)

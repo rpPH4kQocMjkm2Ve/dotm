@@ -2,6 +2,7 @@ package engine
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -288,5 +289,158 @@ func TestWalkAndWriteInitialPermissions(t *testing.T) {
 	want = os.FileMode(0o644)
 	if got != want {
 		t.Errorf("permissions after applyPerms = %04o, want %04o", got, want)
+	}
+}
+
+// ─── stripTmplSuffix ────────────────────────────────────────────────────────
+
+func TestStripTmplSuffix(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"with .tmpl", "config.conf.tmpl", "config.conf"},
+		{"nested .tmpl", ".config/app/settings.tmpl", ".config/app/settings"},
+		{"no .tmpl", "config.conf", "config.conf"},
+		{"only .tmpl", ".tmpl", ""},
+		{"empty", "", ""},
+		{"double .tmpl", "file.tmpl.tmpl", "file.tmpl"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripTmplSuffix(tt.input)
+			if got != tt.want {
+				t.Errorf("stripTmplSuffix(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// ─── writeTmp ───────────────────────────────────────────────────────────────
+
+func TestWriteTmp(t *testing.T) {
+	content := []byte("test content")
+	path, err := writeTmp("dotm-test-", content)
+	if err != nil {
+		t.Fatalf("writeTmp: %v", err)
+	}
+	defer os.Remove(path)
+
+	// Verify file exists and content matches.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read tmp: %v", err)
+	}
+	if string(data) != string(content) {
+		t.Errorf("content = %q, want %q", data, content)
+	}
+
+	// Verify file is in secure temp dir, not /tmp.
+	if filepath.Dir(path) == "/tmp" {
+		t.Error("writeTmp should not use /tmp directly")
+	}
+}
+
+func TestWriteTmpEmptyContent(t *testing.T) {
+	path, err := writeTmp("dotm-empty-", nil)
+	if err != nil {
+		t.Fatalf("writeTmp: %v", err)
+	}
+	defer os.Remove(path)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read tmp: %v", err)
+	}
+	if len(data) != 0 {
+		t.Errorf("expected empty content, got %q", data)
+	}
+}
+
+// ─── fileContent ────────────────────────────────────────────────────────────
+
+func TestFileContent(t *testing.T) {
+	sourceDir := t.TempDir()
+	filesDir := filepath.Join(sourceDir, "files", ".config")
+	os.MkdirAll(filesDir, 0o755)
+
+	// Plain file.
+	plainPath := filepath.Join(filesDir, "plain.conf")
+	os.WriteFile(plainPath, []byte("plain content"), 0o644)
+
+	// Template file.
+	tmplPath := filepath.Join(filesDir, "templated.conf.tmpl")
+	os.WriteFile(tmplPath, []byte("hostname: {{ .hostname }}"), 0o644)
+
+	cfg := &config.Config{
+		Dest:  t.TempDir(),
+		Shell: "bash",
+	}
+	state := &prompt.State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+
+	eng, err := New(cfg, state, sourceDir, false)
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	// Test plain file.
+	plainContent, err := eng.fileContent(plainPath, ".config/plain.conf")
+	if err != nil {
+		t.Fatalf("fileContent(plain): %v", err)
+	}
+	if string(plainContent) != "plain content" {
+		t.Errorf("plain content = %q, want %q", plainContent, "plain content")
+	}
+
+	// Test template file (should render).
+	tmplContent, err := eng.fileContent(tmplPath, ".config/templated.conf.tmpl")
+	if err != nil {
+		t.Fatalf("fileContent(tmpl): %v", err)
+	}
+	// Should contain rendered hostname.
+	if len(tmplContent) == 0 {
+		t.Error("tmpl content should not be empty")
+	}
+}
+
+// ─── execScript ─────────────────────────────────────────────────────────────
+
+func TestExecScriptInvalidShell(t *testing.T) {
+	// Should fail for invalid shell.
+	err := execScript([]byte("echo test"), "invalidshell")
+	if err == nil {
+		t.Error("expected error for invalid shell, got nil")
+	}
+}
+
+func TestExecScriptValid(t *testing.T) {
+	// Find bash path.
+	bashPath, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not found")
+	}
+
+	// Simple script that writes to a file.
+	tmpDir := t.TempDir()
+	outFile := filepath.Join(tmpDir, "output.txt")
+	script := []byte("echo 'hello from script' > " + outFile)
+
+	err = execScript(script, bashPath)
+	if err != nil {
+		t.Fatalf("execScript: %v", err)
+	}
+
+	// Verify script ran.
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if string(data) != "hello from script\n" {
+		t.Errorf("output = %q, want %q", data, "hello from script\n")
 	}
 }

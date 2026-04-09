@@ -13,6 +13,58 @@ func newTestPkgEngine(data map[string]any) *Engine {
 	}
 }
 
+func TestShellQuote(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"simple", "git", "'git'"},
+		{"with spaces", "my package", "'my package'"},
+		{"with single quote", "it's", "'it'\\''s'"},
+		{"empty", "", "''"},
+		{"multiple quotes", "a'b'c", "'a'\\''b'\\''c'"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shellQuote(tt.input)
+			if got != tt.want {
+				t.Errorf("shellQuote(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRawData(t *testing.T) {
+	data := map[string]any{"laptop": true, "hostname": "myhost"}
+	e := &Engine{data: data}
+
+	result := e.rawData("testpkg")
+	if result["Name"] != "testpkg" {
+		t.Errorf("rawData() Name = %v, want testpkg", result["Name"])
+	}
+	if result["laptop"] != true {
+		t.Errorf("rawData() laptop = %v, want true", result["laptop"])
+	}
+	if result["hostname"] != "myhost" {
+		t.Errorf("rawData() hostname = %v, want myhost", result["hostname"])
+	}
+}
+
+func TestShellData(t *testing.T) {
+	data := map[string]any{"laptop": true}
+	e := &Engine{data: data}
+
+	result := e.shellData("mypkg")
+	if result["Name"] != "'mypkg'" {
+		t.Errorf("shellData() Name = %v, want 'mypkg'", result["Name"])
+	}
+	if result["laptop"] != true {
+		t.Errorf("shellData() laptop = %v, want true", result["laptop"])
+	}
+}
+
 func TestRenderName(t *testing.T) {
 	data := map[string]any{"laptop": true, "tablet": false}
 	e := &Engine{data: data}

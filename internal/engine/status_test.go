@@ -324,3 +324,67 @@ func TestStatusNestedFiles(t *testing.T) {
 		t.Error("expected waybar config missing")
 	}
 }
+
+// ─── FormatStatus ───────────────────────────────────────────────────────────
+
+func TestFormatStatus(t *testing.T) {
+	tests := []struct {
+		status FileStatus
+		want   string
+	}{
+		{StatusClean, "clean"},
+		{StatusModified, "modified"},
+		{StatusMissing, "missing"},
+		{StatusOrphan, "orphan"},
+		{FileStatus(99), "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			got := FormatStatus(tt.status)
+			if got != tt.want {
+				t.Errorf("FormatStatus(%v) = %q, want %q", tt.status, got, tt.want)
+			}
+		})
+	}
+}
+
+// ─── PrintReport ────────────────────────────────────────────────────────────
+
+func TestPrintReportVerbose(t *testing.T) {
+	report := &StatusReport{
+		Entries: []StatusEntry{
+			{".config/test.conf", StatusClean},
+			{".config/other.conf", StatusModified},
+		},
+	}
+
+	// Just verify it doesn't panic.
+	PrintReport(report, true, ScopeFiles)
+}
+
+func TestPrintReportNonVerbose(t *testing.T) {
+	report := &StatusReport{
+		Entries: []StatusEntry{
+			{".config/test.conf", StatusClean},
+			{".config/other.conf", StatusModified},
+		},
+	}
+
+	// Should only print non-clean entries.
+	PrintReport(report, false, ScopeFiles)
+}
+
+func TestPrintReportEmpty(t *testing.T) {
+	report := &StatusReport{}
+	PrintReport(report, true, ScopeFiles)
+}
+
+func TestPrintReportWithPkgs(t *testing.T) {
+	report := &StatusReport{
+		Entries:        []StatusEntry{{".config/test.conf", StatusClean}},
+		PkgHasProblems: true,
+		PkgOrSvcPrinted: true,
+	}
+	PrintReport(report, false, ScopeAll)
+}
