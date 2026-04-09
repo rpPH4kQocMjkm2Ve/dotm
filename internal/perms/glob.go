@@ -18,6 +18,8 @@ func MatchGlob(pattern, path string) bool {
 	return compileGlob(pattern).MatchString(path)
 }
 
+const globCacheMaxSize = 500
+
 var (
 	globCache   = make(map[string]*regexp.Regexp)
 	globCacheMu sync.RWMutex
@@ -44,6 +46,21 @@ func compileGlob(pattern string) *regexp.Regexp {
 	regex := buildGlobRegex(pattern)
 	compiled := regexp.MustCompile("^" + regex + "$")
 	globCache[pattern] = compiled
+
+	// Evict oldest entries if cache exceeds max size.
+	// Simple strategy: clear half the cache when it gets too large.
+	if len(globCache) > globCacheMaxSize {
+		count := 0
+		half := globCacheMaxSize / 2
+		for k := range globCache {
+			delete(globCache, k)
+			count++
+			if count >= half {
+				break
+			}
+		}
+	}
+
 	return compiled
 }
 

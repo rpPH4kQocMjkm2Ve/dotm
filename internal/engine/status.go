@@ -9,6 +9,15 @@ import (
 	"strings"
 )
 
+// ANSI color codes for terminal output.
+const (
+	ansiGreen  = "\033[32m"
+	ansiYellow = "\033[33m"
+	ansiRed    = "\033[31m"
+	ansiPurple = "\033[35m"
+	ansiReset  = "\033[0m"
+)
+
 // FileStatus represents the state of a single managed file.
 type FileStatus int
 
@@ -142,6 +151,15 @@ func (e *Engine) Status() (*StatusReport, error) {
 			report.Entries = append(report.Entries, StatusEntry{rel, StatusOrphan})
 		}
 	}
+	for _, rel := range e.state.Manifest.Directories {
+		if sourceSet[rel] {
+			continue
+		}
+		destPath := filepath.Join(e.cfg.Dest, rel)
+		if info, err := os.Stat(destPath); err == nil && info.IsDir() {
+			report.Entries = append(report.Entries, StatusEntry{rel, StatusOrphan})
+		}
+	}
 
 	// Sort entries by path for stable output.
 	sort.Slice(report.Entries, func(i, j int) bool {
@@ -242,17 +260,17 @@ func PrintReport(report *StatusReport, verbose bool) {
 		if isTerminal {
 			switch entry.Status {
 			case StatusClean:
-				color = "\033[32m"
-				reset = "\033[0m"
+				color = ansiGreen
+				reset = ansiReset
 			case StatusModified:
-				color = "\033[33m"
-				reset = "\033[0m"
+				color = ansiYellow
+				reset = ansiReset
 			case StatusMissing:
-				color = "\033[31m"
-				reset = "\033[0m"
+				color = ansiRed
+				reset = ansiReset
 			case StatusOrphan:
-				color = "\033[35m"
-				reset = "\033[0m"
+				color = ansiPurple
+				reset = ansiReset
 			}
 		}
 

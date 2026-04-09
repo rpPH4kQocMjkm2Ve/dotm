@@ -116,23 +116,7 @@ func cmdApply(flags []string) error {
 		}
 	}
 
-	sourceDir, err := findSourceDir()
-	if err != nil {
-		return err
-	}
-
-	cfg, err := config.Load(filepath.Join(sourceDir, configName))
-	if err != nil {
-		return err
-	}
-
-	state, err := prompt.LoadState(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	// Resolve any new prompts (e.g. added since last init).
-	changed, err := prompt.Resolve(cfg, state, os.Stdin, os.Stdout)
+	sourceDir, cfg, state, changed, err := setupEngine()
 	if err != nil {
 		return err
 	}
@@ -157,23 +141,8 @@ func cmdApply(flags []string) error {
 }
 
 func cmdDiff() error {
-	sourceDir, err := findSourceDir()
+	sourceDir, cfg, state, _, err := setupEngine()
 	if err != nil {
-		return err
-	}
-
-	cfg, err := config.Load(filepath.Join(sourceDir, configName))
-	if err != nil {
-		return err
-	}
-
-	state, err := prompt.LoadState(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	// Resolve prompts if needed (diff may render templates).
-	if _, err := prompt.Resolve(cfg, state, os.Stdin, os.Stdout); err != nil {
 		return err
 	}
 
@@ -199,23 +168,8 @@ func cmdStatus(flags []string) error {
 		}
 	}
 
-	sourceDir, err := findSourceDir()
+	sourceDir, cfg, state, _, err := setupEngine()
 	if err != nil {
-		return err
-	}
-
-	cfg, err := config.Load(filepath.Join(sourceDir, configName))
-	if err != nil {
-		return err
-	}
-
-	state, err := prompt.LoadState(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	// Resolve prompts if needed (status may render templates).
-	if _, err := prompt.Resolve(cfg, state, os.Stdin, os.Stdout); err != nil {
 		return err
 	}
 
@@ -243,6 +197,32 @@ func cmdStatus(flags []string) error {
 	}
 
 	return nil
+}
+
+// setupEngine locates the source dir, loads config and state, resolves prompts,
+// and returns everything needed to create an engine.
+func setupEngine() (string, *config.Config, *prompt.State, bool, error) {
+	sourceDir, err := findSourceDir()
+	if err != nil {
+		return "", nil, nil, false, err
+	}
+
+	cfg, err := config.Load(filepath.Join(sourceDir, configName))
+	if err != nil {
+		return "", nil, nil, false, err
+	}
+
+	state, err := prompt.LoadState(sourceDir)
+	if err != nil {
+		return "", nil, nil, false, err
+	}
+
+	changed, err := prompt.Resolve(cfg, state, os.Stdin, os.Stdout)
+	if err != nil {
+		return "", nil, nil, false, err
+	}
+
+	return sourceDir, cfg, state, changed, nil
 }
 
 // findSourceDir walks up from the current directory looking for dotm.toml.

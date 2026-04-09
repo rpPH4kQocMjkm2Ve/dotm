@@ -97,6 +97,7 @@ func (e *Engine) recordManifest(writtenAbs []string) {
 
 		info, err := os.Lstat(abs)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: cannot stat %s: %v\n", abs, err)
 			continue
 		}
 		if info.IsDir() {
@@ -400,6 +401,11 @@ func (e *Engine) runScripts() error {
 // it with the configured shell. Uses XDG_RUNTIME_DIR or user state directory
 // to prevent symlink race attacks in /tmp.
 func execScript(content []byte, shell string) error {
+	// Validate shell is a known safe path.
+	if !isValidShell(shell) {
+		return fmt.Errorf("invalid shell %q: must be an absolute path to a known shell", shell)
+	}
+
 	dir := safetemp.SecureDir()
 
 	tmp, err := os.CreateTemp(dir, "dotm-script-*.sh")
@@ -478,4 +484,41 @@ func writeTmp(prefix string, content []byte) (string, error) {
 
 func stripTmplSuffix(path string) string {
 	return strings.TrimSuffix(path, ".tmpl")
+}
+
+// isValidShell checks if the shell is a known safe shell path.
+// Accepts absolute paths like /bin/bash, /bin/sh, /bin/zsh or bare names
+// that resolve to known shells (bash, sh, zsh, fish).
+func isValidShell(shell string) bool {
+	// Known safe shell paths.
+	knownShells := map[string]bool{
+		"/bin/sh":     true,
+		"/bin/bash":   true,
+		"/bin/zsh":    true,
+		"/bin/fish":   true,
+		"/usr/bin/sh":     true,
+		"/usr/bin/bash":   true,
+		"/usr/bin/zsh":    true,
+		"/usr/bin/fish":   true,
+		"sh":    true,
+		"bash":  true,
+		"zsh":   true,
+		"fish":  true,
+	}
+
+	if knownShells[shell] {
+		return true
+	}
+
+	// If it's an absolute path, check if it exists and is executable.
+	if filepath.IsAbs(shell) {
+		info, err := os.Stat(shell)
+		if err != nil {
+			return false
+		}
+		// Check if it's a regular file.
+		return info.Mode().IsRegular()
+	}
+
+	return false
 }
