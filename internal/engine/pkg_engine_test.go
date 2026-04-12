@@ -1,6 +1,9 @@
 package engine
 
 import (
+	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"dotm/internal/config"
@@ -151,3 +154,147 @@ func TestRenderTemplate(t *testing.T) {
 		})
 	}
 }
+
+// ─── check / run tests ─────────────────────────────────────────────────────
+
+func TestCheckCommand(t *testing.T) {
+	cfg := &config.Config{
+		Managers: map[string]config.ManagerConfig{
+			"test": {
+				Check:   "true",
+				Install: "echo install",
+			},
+		},
+	}
+	e := &Engine{cfg: cfg, data: map[string]any{}}
+
+	result, err := e.check("true", "pkg")
+	if err != nil {
+		t.Fatalf("check(true): %v", err)
+	}
+	if !result {
+		t.Error("check(true) should return true")
+	}
+}
+
+func TestCheckCommandFalse(t *testing.T) {
+	cfg := &config.Config{
+		Managers: map[string]config.ManagerConfig{
+			"test": {
+				Check:   "false",
+				Install: "echo install",
+			},
+		},
+	}
+	e := &Engine{cfg: cfg, data: map[string]any{}}
+
+	result, err := e.check("false", "pkg")
+	if err != nil {
+		t.Fatalf("check(false): %v", err)
+	}
+	if result {
+		t.Error("check(false) should return false")
+	}
+}
+
+func TestCheckCommandWithError(t *testing.T) {
+	cfg := &config.Config{
+		Managers: map[string]config.ManagerConfig{
+			"test": {
+				Check: "nonexistent-command-that-does-not-exist",
+			},
+		},
+	}
+	e := &Engine{cfg: cfg, data: map[string]any{}}
+
+	// bash -c with nonexistent command should return exec error.
+	result, err := e.check("nonexistent-command-that-does-not-exist", "pkg")
+	if err != nil {
+		// Expected — command not found.
+		if !strings.Contains(err.Error(), "execute") {
+			t.Errorf("error = %q, should mention execute", err)
+		}
+	} else if result {
+		t.Error("check(nonexistent) should return false or error")
+	}
+}
+
+func TestRunCommand(t *testing.T) {
+	cfg := &config.Config{
+		Managers: map[string]config.ManagerConfig{
+			"test": {
+				Check:  "true",
+				Enable: "echo ran",
+			},
+		},
+	}
+	e := &Engine{cfg: cfg, data: map[string]any{}}
+
+	// Capture stdout.
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+
+	runErr := e.run("echo test_run", "pkg")
+
+	w.Close()
+
+	if runErr != nil {
+		t.Fatalf("run: %v", runErr)
+	}
+
+	output, err := io.ReadAll(r)
+	r.Close()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if !strings.Contains(string(output), "test_run") {
+		t.Errorf("run output = %q, should contain 'test_run'", output)
+	}
+}
+
+func TestRunCommandWithTemplate(t *testing.T) {
+	cfg := &config.Config{
+		Managers: map[string]config.ManagerConfig{
+			"test": {
+				Check:   "true",
+				Install: "echo installed {{.Name}}",
+			},
+		},
+	}
+	e := &Engine{cfg: cfg, data: map[string]any{}}
+
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+
+	runErr := e.run("echo installed {{.Name}}", "mypkg")
+
+	w.Close()
+
+	if runErr != nil {
+		t.Fatalf("run with template: %v", runErr)
+	}
+
+	output, err := io.ReadAll(r)
+	r.Close()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if !strings.Contains(string(output), "mypkg") {
+		t.Errorf("run output = %q, should contain 'mypkg'", output)
+	}
+}
+
+// ─── Integration-level diff/apply tests ──────────────────────────────────────
+// Tests for diffPackages, diffServices, applyPackages, applyServices require
+// resolved packages/services which are unexported. These are tested via the
+// cmd-level integration tests (see cmd/dotm/main_test.go).

@@ -1,6 +1,10 @@
 package perms
 
-import "testing"
+import (
+	"strconv"
+	"sync"
+	"testing"
+)
 
 func TestMatchGlob(t *testing.T) {
 	tests := []struct {
@@ -59,4 +63,50 @@ func TestMatchGlob(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGlobCacheEviction(t *testing.T) {
+	// Fill cache beyond max size to trigger eviction.
+	for i := 0; i < globCacheMaxSize+10; i++ {
+		pattern := "**/pattern" + strconv.Itoa(i)
+		MatchGlob(pattern, "some/path")
+	}
+
+	globCacheMu.RLock()
+	size := len(globCache)
+	globCacheMu.RUnlock()
+
+	if size > globCacheMaxSize {
+		t.Errorf("cache size %d exceeds max %d after eviction", size, globCacheMaxSize)
+	}
+	if size == 0 {
+		t.Error("cache should not be completely empty after eviction")
+	}
+}
+
+func TestGlobCacheDoubleCheck(t *testing.T) {
+	MatchGlob("TestGlobCacheDoubleCheck/**", "TestGlobCacheDoubleCheck/path")
+	MatchGlob("TestGlobCacheDoubleCheck/**", "TestGlobCacheDoubleCheck/path")
+
+	globCacheMu.RLock()
+	_, ok := globCache["TestGlobCacheDoubleCheck/**"]
+	globCacheMu.RUnlock()
+
+	if !ok {
+		t.Error("pattern should be in cache")
+	}
+}
+
+func TestGlobCacheConcurrency(t *testing.T) {
+	// Test that concurrent access doesn't cause panic or data race.
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			pattern := "**/concurrent" + strconv.Itoa(n)
+			MatchGlob(pattern, "test/path")
+		}(i)
+	}
+	wg.Wait()
 }

@@ -447,6 +447,25 @@ func TestApplyDryRunNoChanges(t *testing.T) {
 	assertEqual(t, "mode unchanged", fileMode(t, f), 0o777)
 }
 
+func TestApplyDryRunNoRoot(t *testing.T) {
+	// Dry run does not require root.
+	actions := []PermAction{
+		{Path: "/some/file.conf", Mode: 0o644, Owner: "root", Group: "root"},
+		{Path: "/some/dir/", Mode: 0o755, Owner: "-", Group: "-"},
+	}
+	ok, errs := ApplyActions(actions, true)
+	if !ok {
+		t.Fatalf("dry run should succeed: %v", errs)
+	}
+}
+
+func TestApplyActionsEmptyActions(t *testing.T) {
+	ok, errs := ApplyActions(nil, false)
+	if !ok {
+		t.Fatalf("expected success for empty actions: %v", errs)
+	}
+}
+
 // ─── Full pipeline ───────────────────────────────────────────────────────────
 
 func TestFullPipeline(t *testing.T) {

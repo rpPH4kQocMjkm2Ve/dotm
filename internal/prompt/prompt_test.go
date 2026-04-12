@@ -1,12 +1,17 @@
 package prompt
 
 import (
+	"bufio"
 	"bytes"
 	"strings"
 	"testing"
 
 	"dotm/internal/config"
 )
+
+func newScanner(input string) *bufio.Scanner {
+	return bufio.NewScanner(strings.NewReader(input))
+}
 
 // ─── coerceValue ─────────────────────────────────────────────────────────────
 
@@ -360,34 +365,98 @@ func TestResetPrompt(t *testing.T) {
 
 // ─── LoadState / Save / stateFile / stateDir ────────────────────────────────
 
-// Note: stateDir/stateFile are tested indirectly via LoadState/Save tests.
-// The actual testStateDir variable is in manifest package.
+func TestLoadStateEmptySourceDir(t *testing.T) {
+	// LoadState for a non-existent source dir should return empty state.
+	s, err := LoadState("/nonexistent/source")
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if s.Data == nil {
+		t.Error("Data should be initialized")
+	}
+	if s.ScriptHashes == nil {
+		t.Error("ScriptHashes should be initialized")
+	}
+	if len(s.Manifest.Files) != 0 {
+		t.Errorf("expected 0 manifest files, got %d", len(s.Manifest.Files))
+	}
+}
 
-func TestLoadSaveState(t *testing.T) {
-	dir := t.TempDir()
-	// We can't override stateDir for prompt package, so we test via LoadState 
-	// which uses the real stateDir.
-	
-	// For this test, we just verify the LoadState/Save API works with a temp dir.
-	// We'll use a workaround by mocking via environment.
+func TestSaveAndLoadStateRoundTrip(t *testing.T) {
+	// Use a real source dir that LoadState can hash.
+	sourceDir := t.TempDir()
+
 	orig := &State{
 		Data:         map[string]any{"laptop": true, "editor": "nvim"},
 		ScriptHashes: map[string]string{"script.sh": "sha256:abc123"},
 	}
+	orig.SetManifest([]string{"a.conf", "b.conf"}, []string{"dir"}, []string{"link"})
 
-	// Create a temp state file manually.
-	stateDirPath := t.TempDir()
-	testStateDirOrig := stateDirPath
-	
-	_ = testStateDirOrig // suppress unused warning
-	_ = dir
-
-	// Test basic State operations without file I/O.
-	if orig.Data["laptop"] != true {
-		t.Error("laptop should be true")
+	if err := orig.Save(sourceDir); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
-	if len(orig.ScriptHashes) != 1 {
-		t.Errorf("expected 1 script hash, got %d", len(orig.ScriptHashes))
+
+	// Load the state back.
+	loaded, err := LoadState(sourceDir)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+
+	if loaded.Data["laptop"] != true {
+		t.Errorf("laptop = %v, want true", loaded.Data["laptop"])
+	}
+	if loaded.Data["editor"] != "nvim" {
+		t.Errorf("editor = %v, want 'nvim'", loaded.Data["editor"])
+	}
+	if loaded.ScriptHashes["script.sh"] != "sha256:abc123" {
+		t.Errorf("script hash = %v, want sha256:abc123", loaded.ScriptHashes["script.sh"])
+	}
+	if len(loaded.Manifest.Files) != 2 {
+		t.Errorf("manifest files = %d, want 2", len(loaded.Manifest.Files))
+	}
+	if len(loaded.Manifest.Directories) != 1 {
+		t.Errorf("manifest dirs = %d, want 1", len(loaded.Manifest.Directories))
+	}
+	if len(loaded.Manifest.Symlinks) != 1 {
+		t.Errorf("manifest symlinks = %d, want 1", len(loaded.Manifest.Symlinks))
+	}
+}
+
+func TestSaveStateAtomic(t *testing.T) {
+	sourceDir := t.TempDir()
+
+	s := &State{
+		Data:         map[string]any{"key": "value"},
+		ScriptHashes: make(map[string]string),
+	}
+
+	// Save multiple times — should not leave temp files.
+	for i := 0; i < 5; i++ {
+		s.Data["iteration"] = i
+		if err := s.Save(sourceDir); err != nil {
+			t.Fatalf("Save #%d: %v", i, err)
+		}
+	}
+
+	loaded, err := LoadState(sourceDir)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if loaded.Data["key"] != "value" {
+		t.Errorf("key = %v, want 'value'", loaded.Data["key"])
+	}
+}
+
+func TestLoadStateNoExistingState(t *testing.T) {
+	// Test that LoadState returns empty state for dirs with no state file.
+	sourceDir := t.TempDir()
+
+	s, err := LoadState(sourceDir)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if len(s.Data) != 0 {
+		t.Errorf("expected empty data, got %d entries", len(s.Data))
 	}
 }
 
@@ -451,5 +520,99 @@ func TestSetGetScriptHash(t *testing.T) {
 	}
 	if got := s.GetScriptHash("unknown.sh"); got != "" {
 		t.Errorf("GetScriptHash for unknown = %v, want empty", got)
+	}
+}
+
+// ─── askBool edge cases ─────────────────────────────────────────────────────
+
+func TestAskBoolEmptyInput(t *testing.T) {
+	input := "\n\nyes\n"
+	scanner := newScanner(input)
+	var buf bytes.Buffer
+	result, err := askBool(scanner, &buf, "Question?")
+	if err != nil {
+		t.Fatalf("askBool: %v", err)
+	}
+	if !result {
+		t.Error("expected true for 'yes' after retries")
+	}
+	output := buf.String()
+	if !strings.Contains(output, "y or n") {
+		t.Errorf("should prompt retry, got: %q", output)
+	}
+}
+
+func TestAskBoolInvalidInput(t *testing.T) {
+	input := "maybe\nyes\n"
+	scanner := newScanner(input)
+	var buf bytes.Buffer
+	result, err := askBool(scanner, &buf, "Question?")
+	if err != nil {
+		t.Fatalf("askBool: %v", err)
+	}
+	if !result {
+		t.Error("expected true for 'yes'")
+	}
+}
+
+func TestAskBoolN(t *testing.T) {
+	for _, s := range []string{"n", "no", "N", "NO"} {
+		scanner := newScanner(s + "\n")
+		var buf bytes.Buffer
+		result, err := askBool(scanner, &buf, "Question?")
+		if err != nil {
+			t.Fatalf("askBool(%q): %v", s, err)
+		}
+		if result {
+			t.Errorf("askBool(%q) = true, want false", s)
+		}
+	}
+}
+
+// ─── askString edge cases ───────────────────────────────────────────────────
+
+func TestAskStringEmptyInput(t *testing.T) {
+	scanner := newScanner("\n")
+	var buf bytes.Buffer
+	result, err := askString(scanner, &buf, "Name?")
+	if err != nil {
+		t.Fatalf("askString: %v", err)
+	}
+	if result != "" {
+		t.Errorf("expected empty string, got %q", result)
+	}
+}
+
+func TestAskStringWhitespaceTrimmed(t *testing.T) {
+	scanner := newScanner("  hello  \n")
+	var buf bytes.Buffer
+	result, err := askString(scanner, &buf, "Name?")
+	if err != nil {
+		t.Fatalf("askString: %v", err)
+	}
+	if result != "hello" {
+		t.Errorf("expected 'hello', got %q", result)
+	}
+}
+
+func TestAskStringEOF(t *testing.T) {
+	scanner := newScanner("")
+	var buf bytes.Buffer
+	_, err := askString(scanner, &buf, "Name?")
+	if err == nil {
+		t.Fatal("expected error for EOF")
+	}
+	if !strings.Contains(err.Error(), "end of input") {
+		t.Errorf("error = %q, should mention end of input", err)
+	}
+}
+
+// ─── ResetPrompt additional ──────────────────────────────────────────────────
+
+func TestResetPromptNonExistent(t *testing.T) {
+	s := &State{Data: map[string]any{"name": "value"}}
+	s.ResetPrompt("nonexistent") // Should not panic.
+	if len(s.Data) != 1 {
+		t.Errorf("expected 1 entry, got %d", len(s.Data))
 	}
 }
