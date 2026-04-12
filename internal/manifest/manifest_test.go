@@ -389,3 +389,52 @@ func TestSaveMergesWithExisting(t *testing.T) {
 		t.Errorf("expected 1 service, got %d", len(loaded.Services))
 	}
 }
+
+// ─── Save error paths ───────────────────────────────────────────────────────
+
+func TestSaveWithExistingPromptData(t *testing.T) {
+	dir := t.TempDir()
+	testStateDir = dir
+	t.Cleanup(func() { testStateDir = "" })
+
+	// Create existing state with prompt data and script hashes.
+	path, _ := stateFile(dir)
+	existingContent := `
+[data]
+theme = "dark"
+gpu = true
+
+[script_hashes]
+"setup.sh" = "sha256:abc123"
+
+[manifest]
+files = ["old.txt"]
+directories = ["dir"]
+symlinks = ["link"]
+`
+	os.WriteFile(path, []byte(existingContent), 0o644)
+
+	// Save new pkg manifest — should preserve existing data.
+	newPkgs := &PkgManifest{
+		Packages: []PackageEntry{{Name: "git", Manager: "pacman"}},
+	}
+	if err := Save(dir, newPkgs); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Load raw file and check that prompt_data is still there.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "theme") || !strings.Contains(content, "dark") {
+		t.Error("expected prompt data to be preserved after Save")
+	}
+	if !strings.Contains(content, "sha256:abc123") {
+		t.Error("expected script hashes to be preserved after Save")
+	}
+	if !strings.Contains(content, "git") {
+		t.Error("expected git package in state file")
+	}
+}

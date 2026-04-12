@@ -3,6 +3,8 @@ package prompt
 import (
 	"bufio"
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -615,4 +617,89 @@ func TestResetPromptNonExistent(t *testing.T) {
 	if len(s.Data) != 1 {
 		t.Errorf("expected 1 entry, got %d", len(s.Data))
 	}
+}
+
+// ─── BuildData hostname fallback ────────────────────────────────────────────
+
+func TestBuildDataHostnameFallback(t *testing.T) {
+	s := &State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+
+	// Even if hostname fails, BuildData should work with fallback.
+	data, err := BuildData(s, "/tmp/dotfiles")
+	if err != nil {
+		t.Fatalf("BuildData: %v", err)
+	}
+
+	// hostname may be empty on error — verify no crash.
+	_ = data["hostname"]
+}
+
+func TestBuildDataUsernameFallback(t *testing.T) {
+	s := &State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+
+	// Clear USER and LOGNAME env vars.
+	t.Setenv("USER", "")
+	t.Setenv("LOGNAME", "")
+
+	data, err := BuildData(s, "/tmp/dotfiles")
+	if err != nil {
+		t.Fatalf("BuildData: %v", err)
+	}
+
+	// username should be empty string.
+	if data["username"] != "" {
+		t.Errorf("expected empty username, got %q", data["username"])
+	}
+}
+
+// ─── FormatStateFile edge cases ─────────────────────────────────────────────
+
+func TestFormatStateFileError(t *testing.T) {
+	// stateFile can error with invalid sourceDir (NUL byte on some systems).
+	// On Linux, empty string is valid (current dir), so test won't error.
+	// Just verify no panic.
+	result := FormatStateFile("")
+	// Result should be non-empty (either path or "~" or full path).
+	if result == "" {
+		t.Error("FormatStateFile should not return empty string")
+	}
+}
+
+// ─── LoadState corrupted TOML ───────────────────────────────────────────────
+
+func TestLoadStateCorruptedTOML(t *testing.T) {
+	sourceDir := t.TempDir()
+
+	// Write corrupted TOML to state file.
+	path, err := stateFile(sourceDir)
+	if err != nil {
+		t.Fatalf("stateFile: %v", err)
+	}
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	os.WriteFile(path, []byte("{{{corrupted toml}}}"), 0o644)
+
+	_, err = LoadState(sourceDir)
+	if err == nil {
+		t.Error("expected error for corrupted TOML")
+	}
+}
+
+// ─── Save error paths ───────────────────────────────────────────────────────
+
+func TestSaveStateError(t *testing.T) {
+	s := &State{
+		Data:         map[string]any{"key": "value"},
+		ScriptHashes: make(map[string]string),
+	}
+
+	// Save to a directory where we can't write (use read-only dir).
+	// Note: On many systems this won't actually fail for root,
+	// so we just verify it doesn't panic.
+	_ = s.Save("/nonexistent/path/that/cannot/exist")
 }

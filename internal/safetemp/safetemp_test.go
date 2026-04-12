@@ -137,7 +137,7 @@ func TestSecureDirCanCreateFiles(t *testing.T) {
 		t.Fatal("expected non-empty directory")
 	}
 
-	// Create a temp file in the secure directory
+	// Create a temp file in the secure directory.
 	f, err := os.CreateTemp(dir, "test-*.txt")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
@@ -145,8 +145,22 @@ func TestSecureDirCanCreateFiles(t *testing.T) {
 	defer os.Remove(f.Name())
 	f.Close()
 
-	// Verify file exists
+	// Verify file exists.
 	if _, err := os.Stat(f.Name()); err != nil {
 		t.Errorf("temp file not found: %v", err)
+	}
+}
+
+func TestSecureDirIdempotent(t *testing.T) {
+	// Call SecureDir multiple times — should always return same path.
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_RUNTIME_DIR", tmpDir)
+
+	dir1 := SecureDir()
+	dir2 := SecureDir()
+	dir3 := SecureDir()
+
+	if dir1 != dir2 || dir2 != dir3 {
+		t.Errorf("expected same directory on repeated calls, got %q, %q, %q", dir1, dir2, dir3)
 	}
 }
