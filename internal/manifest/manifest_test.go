@@ -3,6 +3,7 @@ package manifest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -46,6 +47,160 @@ func TestLoadSave(t *testing.T) {
 	}
 	if loaded.Services[1].Manager != "systemd-user" {
 		t.Errorf("expected systemd-user manager, got %s", loaded.Services[1].Manager)
+	}
+}
+
+func TestStateDirUsesTestStateDir(t *testing.T) {
+	dir := t.TempDir()
+	testStateDir = dir
+	t.Cleanup(func() { testStateDir = "" })
+
+	got, err := stateDir()
+	if err != nil {
+		t.Fatalf("stateDir: %v", err)
+	}
+	if got != dir {
+		t.Errorf("stateDir = %q, want %q", got, dir)
+	}
+}
+
+func TestStateFileUsesTestStateDir(t *testing.T) {
+	dir := t.TempDir()
+	testStateDir = dir
+	t.Cleanup(func() { testStateDir = "" })
+
+	path, err := stateFile("/some/config/dir")
+	if err != nil {
+		t.Fatalf("stateFile: %v", err)
+	}
+	// Path should be in testStateDir.
+	if filepath.Dir(path) != dir {
+		t.Errorf("stateFile path not in testStateDir: %s", path)
+	}
+}
+
+func TestLoadWithInvalidTOML(t *testing.T) {
+	dir := t.TempDir()
+	testStateDir = dir
+	t.Cleanup(func() { testStateDir = "" })
+
+	// Create an invalid state file.
+	path, _ := stateFile(dir)
+	os.WriteFile(path, []byte("{{{invalid toml"), 0o644)
+
+	// Load should handle error gracefully.
+	m, err := Load(dir)
+	if err == nil {
+		t.Error("expected error for invalid TOML")
+	}
+	if m == nil {
+		t.Error("expected non-nil manifest even on error")
+	}
+}
+
+func TestLoadWithPkgManifestSection(t *testing.T) {
+	dir := t.TempDir()
+	testStateDir = dir
+	t.Cleanup(func() { testStateDir = "" })
+
+	// Create state file with pkg_manifest section.
+	path, _ := stateFile(dir)
+	content := `
+[pkg_manifest]
+packages = [{name = "vim", manager = "apt"}]
+services = [{name = "cron", manager = "systemd"}]
+`
+	os.WriteFile(path, []byte(content), 0o644)
+
+	m, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if len(m.Packages) != 1 || m.Packages[0].Name != "vim" {
+		t.Errorf("expected vim package, got %v", m.Packages)
+	}
+	if len(m.Services) != 1 || m.Services[0].Name != "cron" {
+		t.Errorf("expected cron service, got %v", m.Services)
+	}
+}
+
+func TestLoadWithInvalidPkgManifestSection(t *testing.T) {
+	dir := t.TempDir()
+	testStateDir = dir
+	t.Cleanup(func() { testStateDir = "" })
+
+	path, _ := stateFile(dir)
+	content := `
+[pkg_manifest]
+packages = "not a table"
+`
+	os.WriteFile(path, []byte(content), 0o644)
+
+	m, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// Should return empty packages.
+	if len(m.Packages) != 0 {
+		t.Errorf("expected 0 packages, got %d", len(m.Packages))
+	}
+}
+
+func TestSaveMergesWithExistingState(t *testing.T) {
+	dir := t.TempDir()
+	testStateDir = dir
+	t.Cleanup(func() { testStateDir = "" })
+
+	// Create existing state with prompt data.
+	path, _ := stateFile(dir)
+	existingContent := `
+[prompt_data]
+theme = "dark"
+
+[manifest]
+files = ["old.txt"]
+`
+	os.WriteFile(path, []byte(existingContent), 0o644)
+
+	// Save new pkg manifest.
+	newPkgs := &PkgManifest{
+		Packages: []PackageEntry{{Name: "git", Manager: "pacman"}},
+	}
+	if err := Save(dir, newPkgs); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Load raw file and check that prompt_data is still there.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	if !strings.Contains(string(data), "[prompt_data]") {
+		t.Error("expected prompt_data to be preserved after Save")
+	}
+	if !strings.Contains(string(data), "git") {
+		t.Error("expected git package in state file")
+	}
+}
+
+func TestSaveEmptyManifest(t *testing.T) {
+	dir := t.TempDir()
+	testStateDir = dir
+	t.Cleanup(func() { testStateDir = "" })
+
+	// Save empty manifest.
+	if err := Save(dir, &PkgManifest{}); err != nil {
+		t.Fatalf("Save empty: %v", err)
+	}
+
+	// Load it back.
+	m, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(m.Packages) != 0 || len(m.Services) != 0 {
+		t.Errorf("expected empty manifest, got pkgs=%d svcs=%d", len(m.Packages), len(m.Services))
 	}
 }
 
@@ -232,27 +387,5 @@ func TestSaveMergesWithExisting(t *testing.T) {
 	// Note: Save overwrites pkg_manifest, so only services should be there.
 	if len(loaded.Services) != 1 {
 		t.Errorf("expected 1 service, got %d", len(loaded.Services))
-	}
-}
-
-func TestSaveEmptyManifest(t *testing.T) {
-	dir := t.TempDir()
-	testStateDir = dir
-	t.Cleanup(func() { testStateDir = "" })
-
-	m := &PkgManifest{}
-	if err := Save(dir, m); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-
-	loaded, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(loaded.Packages) != 0 {
-		t.Errorf("expected 0 packages, got %d", len(loaded.Packages))
-	}
-	if len(loaded.Services) != 0 {
-		t.Errorf("expected 0 services, got %d", len(loaded.Services))
 	}
 }

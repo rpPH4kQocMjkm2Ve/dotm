@@ -1,300 +1,383 @@
 package engine
 
 import (
-	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	"dotm/internal/config"
+	"dotm/internal/manifest"
+	"dotm/internal/prompt"
 )
 
-func newTestPkgEngine(data map[string]any) *Engine {
-	return &Engine{
-		cfg:  &config.Config{Managers: map[string]config.ManagerConfig{"test": {}}},
-		data: data,
+// ─── diffPackages ───────────────────────────────────────────────────────────
+
+func TestDiffPackagesInstall(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755) // not installed
+
+	tomlContent := pkgManagerTOML(checkScript) + `
+[mock]
+packages = ["new-pkg"]
+`
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
+
+	output := captureStdout(func() {
+		eng.diffPackages()
+	})
+
+	if !strings.Contains(output, "+ install") || !strings.Contains(output, "new-pkg") {
+		t.Errorf("expected '+ install new-pkg' in output, got: %s", output)
 	}
 }
 
-func TestShellQuote(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{"simple", "git", "'git'"},
-		{"with spaces", "my package", "'my package'"},
-		{"with single quote", "it's", "'it'\\''s'"},
-		{"empty", "", "''"},
-		{"multiple quotes", "a'b'c", "'a'\\''b'\\''c'"},
-	}
+func TestDiffPackagesRemove(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755) // installed
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := shellQuote(tt.input)
-			if got != tt.want {
-				t.Errorf("shellQuote(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
+	// Save a manifest with an old package.
+	prevPkgs := &manifest.PkgManifest{
+		Packages: []manifest.PackageEntry{{Name: "old-pkg", Manager: "mock"}},
 	}
-}
+	savePkgManifest(t, sourceDir, prevPkgs)
 
-func TestRawData(t *testing.T) {
-	data := map[string]any{"laptop": true, "hostname": "myhost"}
-	e := &Engine{data: data}
+	// No desired packages in config.
+	tomlContent := pkgManagerTOML(checkScript)
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
 
-	result := e.rawData("testpkg")
-	if result["Name"] != "testpkg" {
-		t.Errorf("rawData() Name = %v, want testpkg", result["Name"])
-	}
-	if result["laptop"] != true {
-		t.Errorf("rawData() laptop = %v, want true", result["laptop"])
-	}
-	if result["hostname"] != "myhost" {
-		t.Errorf("rawData() hostname = %v, want myhost", result["hostname"])
+	output := captureStdout(func() {
+		eng.diffPackages()
+	})
+
+	if !strings.Contains(output, "- remove") || !strings.Contains(output, "old-pkg") {
+		t.Errorf("expected '- remove old-pkg' in output, got: %s", output)
 	}
 }
 
-func TestShellData(t *testing.T) {
-	data := map[string]any{"laptop": true}
-	e := &Engine{data: data}
+func TestDiffPackagesNoChanges(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
 
-	result := e.shellData("mypkg")
-	if result["Name"] != "'mypkg'" {
-		t.Errorf("shellData() Name = %v, want 'mypkg'", result["Name"])
-	}
-	if result["laptop"] != true {
-		t.Errorf("shellData() laptop = %v, want true", result["laptop"])
-	}
-}
+	tomlContent := pkgManagerTOML(checkScript) + `
+[mock]
+packages = ["git"]
+`
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
 
-func TestRenderName(t *testing.T) {
-	data := map[string]any{"laptop": true, "tablet": false}
-	e := &Engine{data: data}
+	output := captureStdout(func() {
+		eng.diffPackages()
+	})
 
-	tests := []struct {
-		name  string
-		input string
-		want  string
-		ok    bool
-	}{
-		{"plain", "git", "git", true},
-		{"conditional true", "{{ if .laptop }}laptop-tools{{ end }}", "laptop-tools", true},
-		{"conditional false", "{{ if .tablet }}tablet-driver{{ end }}", "", false},
-		{"parse error", "{{ end }}", "", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok, err := e.renderName(tt.input)
-			if ok != tt.ok {
-				t.Errorf("renderName(%q) ok = %v, want %v", tt.input, ok, tt.ok)
-			}
-			if err != nil && tt.name != "parse error" {
-				t.Errorf("renderName(%q) unexpected error: %v", tt.input, err)
-			}
-			if got != tt.want {
-				t.Errorf("renderName(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
+	// Should not print anything if no changes.
+	if strings.Contains(output, "install") || strings.Contains(output, "remove") {
+		t.Errorf("expected no changes in output, got: %s", output)
 	}
 }
 
-func TestRenderTemplate(t *testing.T) {
-	data := map[string]any{"Name": "foo", "laptop": true}
+// ─── diffServices ───────────────────────────────────────────────────────────
 
-	tests := []struct {
-		name     string
-		template string
-		want     string
-		wantErr  bool
-	}{
-		{
-			name:     "no template",
-			template: "pacman -Q foo",
-			want:     "pacman -Q foo",
-			wantErr:  false,
-		},
-		{
-			name:     "with Name variable",
-			template: "pacman -Q {{.Name}}",
-			want:     "pacman -Q foo",
-			wantErr:  false,
-		},
-		{
-			name:     "multiple substitutions",
-			template: "systemctl enable {{.Name}} && systemctl start {{.Name}}",
-			want:     "systemctl enable foo && systemctl start foo",
-			wantErr:  false,
-		},
-		{
-			name:     "missing key error",
-			template: "cmd {{.Unknown}}",
-			want:     "",
-			wantErr:  true,
-		},
-		{
-			name:     "syntax error",
-			template: "cmd {{.Name",
-			want:     "",
-			wantErr:  true,
-		},
-	}
+func TestDiffServicesEnable(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755) // not enabled
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := newTestPkgEngine(data).renderCached(tt.template, data)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("renderTemplate() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("renderTemplate() = %q, want %q", got, tt.want)
-			}
-		})
+	tomlContent := svcManagerTOML(checkScript) + `
+[mock]
+services = ["new-svc"]
+`
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
+
+	output := captureStdout(func() {
+		eng.diffServices()
+	})
+
+	if !strings.Contains(output, "+ enable") || !strings.Contains(output, "new-svc") {
+		t.Errorf("expected '+ enable new-svc' in output, got: %s", output)
 	}
 }
 
-// ─── check / run tests ─────────────────────────────────────────────────────
+func TestDiffServicesDisable(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755) // enabled
 
-func TestCheckCommand(t *testing.T) {
-	cfg := &config.Config{
-		Managers: map[string]config.ManagerConfig{
-			"test": {
-				Check:   "true",
-				Install: "echo install",
-			},
-		},
+	prevSvcs := &manifest.PkgManifest{
+		Services: []manifest.ServiceEntry{{Name: "old-svc", Manager: "mock"}},
 	}
-	e := &Engine{cfg: cfg, data: map[string]any{}}
+	savePkgManifest(t, sourceDir, prevSvcs)
 
-	result, err := e.check("true", "pkg")
+	tomlContent := svcManagerTOML(checkScript)
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
+
+	output := captureStdout(func() {
+		eng.diffServices()
+	})
+
+	if !strings.Contains(output, "- disable") || !strings.Contains(output, "old-svc") {
+		t.Errorf("expected '- disable old-svc' in output, got: %s", output)
+	}
+}
+
+// ─── applyPackages ──────────────────────────────────────────────────────────
+
+func TestApplyPackagesDryRun(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+
+	tomlContent := pkgManagerTOML(checkScript) + `
+[mock]
+packages = ["new-pkg"]
+`
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	
+	state := &prompt.State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+	eng, err := New(cfg, state, sourceDir, true) // dryRun = true
 	if err != nil {
-		t.Fatalf("check(true): %v", err)
+		t.Fatalf("new engine: %v", err)
 	}
-	if !result {
-		t.Error("check(true) should return true")
-	}
-}
 
-func TestCheckCommandFalse(t *testing.T) {
-	cfg := &config.Config{
-		Managers: map[string]config.ManagerConfig{
-			"test": {
-				Check:   "false",
-				Install: "echo install",
-			},
-		},
-	}
-	e := &Engine{cfg: cfg, data: map[string]any{}}
-
-	result, err := e.check("false", "pkg")
-	if err != nil {
-		t.Fatalf("check(false): %v", err)
-	}
-	if result {
-		t.Error("check(false) should return false")
-	}
-}
-
-func TestCheckCommandWithError(t *testing.T) {
-	cfg := &config.Config{
-		Managers: map[string]config.ManagerConfig{
-			"test": {
-				Check: "nonexistent-command-that-does-not-exist",
-			},
-		},
-	}
-	e := &Engine{cfg: cfg, data: map[string]any{}}
-
-	// bash -c with nonexistent command should return exec error.
-	result, err := e.check("nonexistent-command-that-does-not-exist", "pkg")
-	if err != nil {
-		// Expected — command not found.
-		if !strings.Contains(err.Error(), "execute") {
-			t.Errorf("error = %q, should mention execute", err)
+	output := captureStdout(func() {
+		pkgEntries, errs := eng.applyPackages(true)
+		if len(errs) > 0 {
+			t.Errorf("applyPackages errors: %v", errs)
 		}
-	} else if result {
-		t.Error("check(nonexistent) should return false or error")
+		_ = pkgEntries
+	})
+
+	if !strings.Contains(output, "[DRY RUN]") || !strings.Contains(output, "new-pkg") {
+		t.Errorf("expected [DRY RUN] new-pkg in output, got: %s", output)
 	}
 }
 
-func TestRunCommand(t *testing.T) {
-	cfg := &config.Config{
-		Managers: map[string]config.ManagerConfig{
-			"test": {
-				Check:  "true",
-				Enable: "echo ran",
-			},
-		},
-	}
-	e := &Engine{cfg: cfg, data: map[string]any{}}
+func TestApplyPackagesAlreadyInstalled(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
 
-	// Capture stdout.
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	os.Stdout = w
-	defer func() { os.Stdout = old }()
+	tomlContent := pkgManagerTOML(checkScript) + `
+[mock]
+packages = ["git"]
+`
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
 
-	runErr := e.run("echo test_run", "pkg")
+	output := captureStdout(func() {
+		pkgEntries, errs := eng.applyPackages(false)
+		if len(errs) > 0 {
+			t.Errorf("applyPackages errors: %v", errs)
+		}
+		if len(pkgEntries) != 1 || pkgEntries[0].Name != "git" {
+			t.Errorf("expected git in pkgEntries, got %v", pkgEntries)
+		}
+	})
 
-	w.Close()
-
-	if runErr != nil {
-		t.Fatalf("run: %v", runErr)
-	}
-
-	output, err := io.ReadAll(r)
-	r.Close()
-	if err != nil {
-		t.Fatalf("ReadAll: %v", err)
-	}
-	if !strings.Contains(string(output), "test_run") {
-		t.Errorf("run output = %q, should contain 'test_run'", output)
+	if strings.Contains(output, "Installed") {
+		t.Errorf("should not install already-installed package, got: %s", output)
 	}
 }
 
-func TestRunCommandWithTemplate(t *testing.T) {
-	cfg := &config.Config{
-		Managers: map[string]config.ManagerConfig{
-			"test": {
-				Check:   "true",
-				Install: "echo installed {{.Name}}",
-			},
-		},
+func TestApplyPackagesRemoveObsolete(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+
+	prevPkgs := &manifest.PkgManifest{
+		Packages: []manifest.PackageEntry{{Name: "old-pkg", Manager: "mock"}},
 	}
-	e := &Engine{cfg: cfg, data: map[string]any{}}
+	savePkgManifest(t, sourceDir, prevPkgs)
 
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	os.Stdout = w
-	defer func() { os.Stdout = old }()
+	tomlContent := managerTOML(checkScript)
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
 
-	runErr := e.run("echo installed {{.Name}}", "mypkg")
+	output := captureStdout(func() {
+		pkgEntries, errs := eng.applyPackages(false)
+		if len(errs) > 0 {
+			t.Errorf("applyPackages errors: %v", errs)
+		}
+		// Should return empty packages (old removed), no desired packages.
+		_ = pkgEntries
+	})
 
-	w.Close()
-
-	if runErr != nil {
-		t.Fatalf("run with template: %v", runErr)
-	}
-
-	output, err := io.ReadAll(r)
-	r.Close()
-	if err != nil {
-		t.Fatalf("ReadAll: %v", err)
-	}
-	if !strings.Contains(string(output), "mypkg") {
-		t.Errorf("run output = %q, should contain 'mypkg'", output)
+	if !strings.Contains(output, "Removed") || !strings.Contains(output, "old-pkg") {
+		t.Errorf("expected 'Removed old-pkg' in output, got: %s", output)
 	}
 }
 
-// ─── Integration-level diff/apply tests ──────────────────────────────────────
-// Tests for diffPackages, diffServices, applyPackages, applyServices require
-// resolved packages/services which are unexported. These are tested via the
-// cmd-level integration tests (see cmd/dotm/main_test.go).
+func TestApplyPackagesRemoveObsoleteDryRun(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+
+	prevPkgs := &manifest.PkgManifest{
+		Packages: []manifest.PackageEntry{{Name: "old-pkg", Manager: "mock"}},
+	}
+	savePkgManifest(t, sourceDir, prevPkgs)
+
+	tomlContent := managerTOML(checkScript)
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	
+	state := &prompt.State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+	eng, err := New(cfg, state, sourceDir, true)
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	output := captureStdout(func() {
+		pkgEntries, errs := eng.applyPackages(true)
+		if len(errs) > 0 {
+			t.Errorf("applyPackages errors: %v", errs)
+		}
+		_ = pkgEntries
+	})
+
+	if !strings.Contains(output, "[DRY RUN]") || !strings.Contains(output, "old-pkg") {
+		t.Errorf("expected [DRY RUN] old-pkg in output, got: %s", output)
+	}
+}
+
+// ─── applyServices ──────────────────────────────────────────────────────────
+
+func TestApplyServicesDryRun(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+
+	tomlContent := svcManagerTOML(checkScript) + `
+[mock]
+services = ["new-svc"]
+`
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	
+	state := &prompt.State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+	eng, err := New(cfg, state, sourceDir, true)
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	output := captureStdout(func() {
+		svcEntries, errs := eng.applyServices(true)
+		if len(errs) > 0 {
+			t.Errorf("applyServices errors: %v", errs)
+		}
+		_ = svcEntries
+	})
+
+	if !strings.Contains(output, "[DRY RUN]") || !strings.Contains(output, "new-svc") {
+		t.Errorf("expected [DRY RUN] new-svc in output, got: %s", output)
+	}
+}
+
+func TestApplyServicesAlreadyEnabled(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+
+	tomlContent := svcManagerTOML(checkScript) + `
+[mock]
+services = ["sshd"]
+`
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
+
+	output := captureStdout(func() {
+		svcEntries, errs := eng.applyServices(false)
+		if len(errs) > 0 {
+			t.Errorf("applyServices errors: %v", errs)
+		}
+		if len(svcEntries) != 1 || svcEntries[0].Name != "sshd" {
+			t.Errorf("expected sshd in svcEntries, got %v", svcEntries)
+		}
+	})
+
+	if strings.Contains(output, "Enabled") {
+		t.Errorf("should not enable already-enabled service, got: %s", output)
+	}
+}
+
+func TestApplyServicesDisableObsolete(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+
+	prevSvcs := &manifest.PkgManifest{
+		Services: []manifest.ServiceEntry{{Name: "old-svc", Manager: "mock"}},
+	}
+	savePkgManifest(t, sourceDir, prevSvcs)
+
+	tomlContent := managerTOML(checkScript)
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
+
+	output := captureStdout(func() {
+		svcEntries, errs := eng.applyServices(false)
+		if len(errs) > 0 {
+			t.Errorf("applyServices errors: %v", errs)
+		}
+		_ = svcEntries
+	})
+
+	if !strings.Contains(output, "Disabled") || !strings.Contains(output, "old-svc") {
+		t.Errorf("expected 'Disabled old-svc' in output, got: %s", output)
+	}
+}
+
+func TestApplyServicesDisableObsoleteDryRun(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+
+	prevSvcs := &manifest.PkgManifest{
+		Services: []manifest.ServiceEntry{{Name: "old-svc", Manager: "mock"}},
+	}
+	savePkgManifest(t, sourceDir, prevSvcs)
+
+	tomlContent := managerTOML(checkScript)
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	
+	state := &prompt.State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+	eng, err := New(cfg, state, sourceDir, true)
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	output := captureStdout(func() {
+		svcEntries, errs := eng.applyServices(true)
+		if len(errs) > 0 {
+			t.Errorf("applyServices errors: %v", errs)
+		}
+		_ = svcEntries
+	})
+
+	if !strings.Contains(output, "[DRY RUN]") || !strings.Contains(output, "old-svc") {
+		t.Errorf("expected [DRY RUN] old-svc in output, got: %s", output)
+	}
+}
+
+func savePkgManifest(t *testing.T, sourceDir string, m *manifest.PkgManifest) {
+	t.Helper()
+	if err := manifest.Save(sourceDir, m); err != nil {
+		t.Fatalf("save manifest: %v", err)
+	}
+}
