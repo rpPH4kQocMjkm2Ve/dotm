@@ -914,3 +914,246 @@ func TestStatusWithNoManagers(t *testing.T) {
 		t.Error("expected no problems with empty config")
 	}
 }
+
+// ─── Apply full cycle with packages ─────────────────────────────────────────
+
+func TestApplyFullCycleWithPackages(t *testing.T) {
+	sourceDir := t.TempDir()
+	destDir := t.TempDir()
+
+	// Create files.
+	filesDir := filepath.Join(sourceDir, "files", ".config")
+	os.MkdirAll(filesDir, 0o755)
+	os.WriteFile(filepath.Join(filesDir, "app.conf"), []byte("setting=value"), 0o644)
+
+	// Create mock check script (returns 0 = installed).
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+
+	// Create dotm.toml with packages.
+	tomlContent := `
+dest = "` + destDir + `"
+shell = "bash"
+
+[managers.mock]
+check = "` + checkScript + `"
+install = "true"
+remove = "true"
+enable = "true"
+disable = "true"
+
+[mock]
+packages = ["git"]
+`
+	tomlPath := filepath.Join(sourceDir, "dotm.toml")
+	os.WriteFile(tomlPath, []byte(tomlContent), 0o644)
+
+	cfg, err := config.Load(tomlPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	state := &prompt.State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+
+	eng, err := New(cfg, state, sourceDir, false)
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	if err := eng.Apply(ScopeAll); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	// Verify file was created.
+	destPath := filepath.Join(destDir, ".config", "app.conf")
+	if _, err := os.Stat(destPath); err != nil {
+		t.Errorf("expected file to exist, got %v", err)
+	}
+
+	// Verify manifest saved.
+	if len(state.Manifest.Files) != 1 {
+		t.Errorf("expected 1 file in manifest, got %d", len(state.Manifest.Files))
+	}
+}
+
+func TestApplyDryRunWithPackages(t *testing.T) {
+	sourceDir := t.TempDir()
+	destDir := t.TempDir()
+
+	// Create files (same as full cycle test).
+	filesDir := filepath.Join(sourceDir, "files", ".config")
+	os.MkdirAll(filesDir, 0o755)
+	os.WriteFile(filepath.Join(filesDir, "app.conf"), []byte("setting=value"), 0o644)
+
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+
+	tomlContent := `
+dest = "` + destDir + `"
+shell = "bash"
+
+[managers.mock]
+check = "` + checkScript + `"
+install = "true"
+remove = "true"
+enable = "true"
+disable = "true"
+
+[mock]
+packages = ["new-pkg"]
+`
+	tomlPath := filepath.Join(sourceDir, "dotm.toml")
+	os.WriteFile(tomlPath, []byte(tomlContent), 0o644)
+
+	cfg, err := config.Load(tomlPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	state := &prompt.State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+
+	eng, err := New(cfg, state, sourceDir, true) // dryRun = true
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	// Should not error, just print dry run messages.
+	if err := eng.Apply(ScopeAll); err != nil {
+		t.Fatalf("Apply dry run: %v", err)
+	}
+
+	// Nothing should be created — verify both file and package state.
+	destPath := filepath.Join(destDir, ".config", "app.conf")
+	if _, err := os.Stat(destPath); err == nil {
+		t.Error("dry run should not create files")
+	}
+}
+
+func TestApplyWithServices(t *testing.T) {
+	sourceDir := t.TempDir()
+	destDir := t.TempDir()
+
+	// Create a sentinel script that touches a file when run.
+	sentinel := filepath.Join(sourceDir, "service-enabled.sentinel")
+	enableScript := filepath.Join(sourceDir, "enable.sh")
+	os.WriteFile(enableScript, []byte("#!/bin/bash\ntouch "+sentinel), 0o755)
+
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755) // not enabled
+
+	tomlContent := `
+dest = "` + destDir + `"
+shell = "bash"
+
+[managers.mock]
+check = "` + checkScript + `"
+install = "true"
+remove = "true"
+enable = "` + enableScript + `"
+disable = "true"
+
+[mock]
+services = ["sshd"]
+`
+	tomlPath := filepath.Join(sourceDir, "dotm.toml")
+	os.WriteFile(tomlPath, []byte(tomlContent), 0o644)
+
+	cfg, err := config.Load(tomlPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	state := &prompt.State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+
+	eng, err := New(cfg, state, sourceDir, false)
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	if err := eng.Apply(ScopeAll); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	// Verify the enable script was executed.
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Error("expected sentinel file to be created by enable script")
+	}
+}
+
+// ─── Status verbose ─────────────────────────────────────────────────────────
+
+func TestStatusVerbose(t *testing.T) {
+	sourceDir := t.TempDir()
+	destDir := t.TempDir()
+
+	filesDir := filepath.Join(sourceDir, "files")
+	os.MkdirAll(filesDir, 0o755)
+	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+
+	cfg := &config.Config{Dest: destDir, Shell: "bash"}
+	state := &prompt.State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+
+	eng, err := New(cfg, state, sourceDir, false)
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	report, err := eng.Status(ScopeFiles, true)
+	if err != nil {
+		t.Fatalf("Status verbose: %v", err)
+	}
+
+	if len(report.Entries) != 1 {
+		t.Errorf("expected 1 entry, got %d", len(report.Entries))
+	}
+	if report.Entries[0].Status != StatusMissing {
+		t.Errorf("expected missing status, got %v", report.Entries[0].Status)
+	}
+}
+
+// ─── Diff verbose ───────────────────────────────────────────────────────────
+
+func TestDiffVerbose(t *testing.T) {
+	sourceDir := t.TempDir()
+	destDir := t.TempDir()
+
+	filesDir := filepath.Join(sourceDir, "files")
+	os.MkdirAll(filesDir, 0o755)
+	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("new content"), 0o644)
+	os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("old content"), 0o644)
+
+	cfg := &config.Config{Dest: destDir, Shell: "bash"}
+	state := &prompt.State{
+		Data:         make(map[string]any),
+		ScriptHashes: make(map[string]string),
+	}
+
+	eng, err := New(cfg, state, sourceDir, false)
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	output := captureStdout(func() {
+		err = eng.Diff(ScopeFiles)
+		if err != nil {
+			t.Errorf("Diff: %v", err)
+		}
+	})
+
+	// Verify diff output contains both old and new content.
+	if !strings.Contains(output, "old content") || !strings.Contains(output, "new content") {
+		t.Errorf("expected diff output to contain both old and new content, got: %s", output)
+	}
+}

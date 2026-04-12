@@ -637,3 +637,40 @@ func TestPamLastMatchWinsOverridesSafe(t *testing.T) {
 		t.Error("faillock.conf with 0600 should NOT be world-readable")
 	}
 }
+
+// ─── isDir ──────────────────────────────────────────────────────────────────
+
+func TestIsDirWithRealFilesystem(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "file.txt")
+	os.WriteFile(filePath, []byte("content"), 0o644)
+
+	if !isDir(dir) {
+		t.Error("expected TempDir to be a directory")
+	}
+	if isDir(filePath) {
+		t.Error("expected file to not be a directory")
+	}
+	if isDir(filepath.Join(dir, "nonexistent")) {
+		t.Error("expected nonexistent path to not be a directory")
+	}
+}
+
+func TestComputeActionsWithRealIsDir(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "subdir"), 0o755)
+	os.WriteFile(filepath.Join(dir, "file.txt"), []byte("content"), 0o644)
+
+	rules, _ := ParseRules("** 0644 - -")
+	managed := []string{
+		filepath.Join(dir, "file.txt"),
+	}
+
+	// Use nil isDirFunc to trigger real isDir.
+	actions := ComputeActions(rules, managed, dir, nil)
+
+	// Should have action for the file.
+	if len(actions) != 1 {
+		t.Errorf("expected 1 action, got %d", len(actions))
+	}
+}
