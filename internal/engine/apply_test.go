@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"dotm/internal/config"
@@ -442,5 +443,43 @@ func TestExecScriptValid(t *testing.T) {
 	}
 	if string(data) != "hello from script\n" {
 		t.Errorf("output = %q, want %q", data, "hello from script\n")
+	}
+}
+
+func TestExecScriptTemplateScript(t *testing.T) {
+	bashPath, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not found")
+	}
+
+	// Script with template-like content (just ensure it executes).
+	tmpDir := t.TempDir()
+	outFile := filepath.Join(tmpDir, "output2.txt")
+	script := []byte("echo '{{ .value }}' > " + outFile)
+
+	err = execScript(script, bashPath)
+	if err != nil {
+		t.Fatalf("execScript template: %v", err)
+	}
+
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "{{ .value }}" {
+		t.Errorf("output = %q, want '{{ .value }}'", strings.TrimSpace(string(data)))
+	}
+}
+
+func TestExecScriptEmptyContent(t *testing.T) {
+	bashPath, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not found")
+	}
+
+	// Empty script should still execute without error.
+	err = execScript([]byte(""), bashPath)
+	if err != nil {
+		t.Fatalf("execScript empty: %v", err)
 	}
 }

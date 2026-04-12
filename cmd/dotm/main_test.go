@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1197,5 +1199,272 @@ func TestRunCmdVersion(t *testing.T) {
 	})
 	if out != "dotm dev\n" {
 		t.Errorf("output = %q, want %q", out, "dotm dev\n")
+	}
+}
+
+// ─── cmdInit error paths ─────────────────────────────────────────────────────
+
+func TestCmdInitInvalidConfig(t *testing.T) {
+	dir := setupTestDir(t)
+
+	// Write invalid TOML.
+	os.WriteFile(filepath.Join(dir, "dotm.toml"), []byte("{{{invalid"), 0o644)
+
+	err := runWithArgs([]string{"init"})
+	if err == nil {
+		t.Fatal("expected error for invalid config, got nil")
+	}
+}
+
+func TestCmdInitMissingDestInConfig(t *testing.T) {
+	dir := setupTestDir(t)
+
+	// Valid TOML but no dest field.
+	os.WriteFile(filepath.Join(dir, "dotm.toml"), []byte(`shell = "bash"`), 0o644)
+
+	err := runWithArgs([]string{"init"})
+	if err == nil {
+		t.Fatal("expected error for missing dest, got nil")
+	}
+}
+
+// ─── cmdDiff scope combinations ──────────────────────────────────────────────
+
+func TestDiffScopeFilesAndPkgs(t *testing.T) {
+	dir := setupTestDir(t)
+
+	destDir := filepath.Join(dir, "dest")
+	os.MkdirAll(destDir, 0o755)
+	writeDotmToml(t, dir, `
+dest = "`+destDir+`"
+[managers.test]
+check = "false"
+install = "echo install"
+remove = "echo remove"
+
+[test]
+packages = ["vim"]
+`)
+	filesDir := filepath.Join(dir, "files")
+	os.MkdirAll(filesDir, 0o755)
+	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644)
+
+	err := runWithArgs([]string{"diff", "files", "pkgs"})
+	if err != nil {
+		t.Fatalf("diff files pkgs: %v", err)
+	}
+}
+
+func TestDiffScopeFilesAndServices(t *testing.T) {
+	dir := setupTestDir(t)
+
+	destDir := filepath.Join(dir, "dest")
+	os.MkdirAll(destDir, 0o755)
+	writeDotmToml(t, dir, `
+dest = "`+destDir+`"
+[managers.test]
+check = "false"
+enable = "echo enable"
+disable = "echo disable"
+
+[test]
+services = ["sshd"]
+`)
+	filesDir := filepath.Join(dir, "files")
+	os.MkdirAll(filesDir, 0o755)
+	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644)
+
+	err := runWithArgs([]string{"diff", "files", "services"})
+	if err != nil {
+		t.Fatalf("diff files services: %v", err)
+	}
+}
+
+// ─── cmdApply scope combinations ─────────────────────────────────────────────
+
+func TestApplyScopeFilesAndPkgs(t *testing.T) {
+	dir := setupTestDir(t)
+
+	destDir := filepath.Join(dir, "dest")
+	os.MkdirAll(destDir, 0o755)
+	writeDotmToml(t, dir, `
+dest = "`+destDir+`"
+[managers.test]
+check = "true"
+install = "echo install"
+remove = "echo remove"
+
+[test]
+packages = ["vim"]
+`)
+	filesDir := filepath.Join(dir, "files")
+	os.MkdirAll(filesDir, 0o755)
+	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+
+	out := captureStdout(t, func() {
+		err := runWithArgs([]string{"apply", "files", "pkgs", "-n"})
+		if err != nil {
+			t.Errorf("apply files pkgs -n: %v", err)
+		}
+	})
+	if !strings.Contains(out, "[DRY RUN]") {
+		t.Errorf("output = %q, should mention dry run", out)
+	}
+}
+
+func TestApplyScopeFilesAndServices(t *testing.T) {
+	dir := setupTestDir(t)
+
+	destDir := filepath.Join(dir, "dest")
+	os.MkdirAll(destDir, 0o755)
+	writeDotmToml(t, dir, `
+dest = "`+destDir+`"
+[managers.test]
+check = "true"
+enable = "echo enable"
+disable = "echo disable"
+
+[test]
+services = ["sshd"]
+`)
+	filesDir := filepath.Join(dir, "files")
+	os.MkdirAll(filesDir, 0o755)
+	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+
+	out := captureStdout(t, func() {
+		err := runWithArgs([]string{"apply", "files", "services", "-n"})
+		if err != nil {
+			t.Errorf("apply files services -n: %v", err)
+		}
+	})
+	if !strings.Contains(out, "[DRY RUN]") {
+		t.Errorf("output = %q, should mention dry run", out)
+	}
+}
+
+// ─── cmdStatus scope combinations ────────────────────────────────────────────
+
+func TestStatusScopeFilesAndPkgs(t *testing.T) {
+	dir := setupTestDir(t)
+
+	destDir := filepath.Join(dir, "dest")
+	os.MkdirAll(destDir, 0o755)
+	writeDotmToml(t, dir, `
+dest = "`+destDir+`"
+[managers.test]
+check = "true"
+install = "echo install"
+remove = "echo remove"
+
+[test]
+packages = ["vim"]
+`)
+	filesDir := filepath.Join(dir, "files")
+	os.MkdirAll(filesDir, 0o755)
+	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+
+	out := captureStdout(t, func() {
+		err := runWithArgs([]string{"status", "files", "pkgs"})
+		if err != nil {
+			t.Errorf("status files pkgs: %v", err)
+		}
+	})
+	// Should show file status.
+	if !strings.Contains(out, "clean") && !strings.Contains(out, "missing") {
+		t.Errorf("output = %q, should show file status", out)
+	}
+}
+
+func TestStatusScopeFilesAndServices(t *testing.T) {
+	dir := setupTestDir(t)
+
+	destDir := filepath.Join(dir, "dest")
+	os.MkdirAll(destDir, 0o755)
+	writeDotmToml(t, dir, `
+dest = "`+destDir+`"
+[managers.test]
+check = "true"
+enable = "echo enable"
+disable = "echo disable"
+
+[test]
+services = ["sshd"]
+`)
+	filesDir := filepath.Join(dir, "files")
+	os.MkdirAll(filesDir, 0o755)
+	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+
+	// Should not error — combined scope is valid.
+	err := runWithArgs([]string{"status", "files", "services"})
+	if err != nil {
+		t.Fatalf("status files services: %v", err)
+	}
+}
+
+// ─── cmdReset with existing state ────────────────────────────────────────────
+
+func TestCmdResetWithExistingState(t *testing.T) {
+	dir := setupTestDir(t)
+
+	writeDotmToml(t, dir, `dest = "/tmp"`)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	statePath := filepath.Join(home, ".local", "state", "dotm")
+	os.MkdirAll(statePath, 0o755)
+
+	// Create state file directly with prompt data.
+	absDir, _ := filepath.Abs(dir)
+	h := sha256.Sum256([]byte(absDir))
+	stateFileName := filepath.Join(statePath, fmt.Sprintf("%x.toml", h[:8]))
+	stateContent := `
+[data]
+gpu = true
+`
+	os.WriteFile(stateFileName, []byte(stateContent), 0o644)
+
+	// Now reset should succeed.
+	out := captureStdout(t, func() {
+		err := runWithArgs([]string{"reset", "gpu"})
+		if err != nil {
+			t.Errorf("reset name: %v", err)
+		}
+	})
+	if !strings.Contains(out, "reset") {
+		t.Errorf("output = %q, should mention reset", out)
+	}
+}
+
+func TestCmdResetAllWithExistingState(t *testing.T) {
+	dir := setupTestDir(t)
+
+	writeDotmToml(t, dir, `dest = "/tmp"`)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	statePath := filepath.Join(home, ".local", "state", "dotm")
+	os.MkdirAll(statePath, 0o755)
+
+	// Create state file directly с prompt data.
+	absDir, _ := filepath.Abs(dir)
+	h := sha256.Sum256([]byte(absDir))
+	stateFileName := filepath.Join(statePath, fmt.Sprintf("%x.toml", h[:8]))
+	stateContent := `
+[data]
+gpu = true
+`
+	os.WriteFile(stateFileName, []byte(stateContent), 0o644)
+
+	// Now reset --all should succeed.
+	out := captureStdout(t, func() {
+		err := runWithArgs([]string{"reset", "--all"})
+		if err != nil {
+			t.Errorf("reset --all: %v", err)
+		}
+	})
+	if !strings.Contains(out, "All prompts reset") {
+		t.Errorf("output = %q, should mention 'All prompts reset'", out)
 	}
 }

@@ -1157,3 +1157,71 @@ func TestDiffVerbose(t *testing.T) {
 		t.Errorf("expected diff output to contain both old and new content, got: %s", output)
 	}
 }
+
+// ─── showDiff error path ────────────────────────────────────────────────────
+
+func TestShowDiffError(t *testing.T) {
+	// Passing nil-old and valid-new should still work.
+	err := showDiff("test", "test", nil, []byte("new"))
+	if err != nil {
+		t.Fatalf("showDiff with nil old: %v", err)
+	}
+}
+
+// ─── PrintReport ANSI color codes ───────────────────────────────────────────
+
+func TestPrintReportColorOutput(t *testing.T) {
+	// PrintReport checks if stdout is a terminal. In tests it's a pipe,
+	// so colors should NOT be emitted. We verify this by checking output
+	// doesn't contain ANSI escape sequences.
+	report := &StatusReport{
+		Entries: []StatusEntry{
+			{".config/test.conf", StatusModified},
+			{".config/missing.conf", StatusMissing},
+			{".config/orphan.conf", StatusOrphan},
+		},
+	}
+
+	output := captureStdout(func() {
+		PrintReport(report, true, ScopeFiles)
+	})
+
+	// Should NOT contain ANSI codes when output is piped.
+	if strings.Contains(output, "\033[") {
+		t.Error("PrintReport should not emit ANSI codes when not in a terminal")
+	}
+
+	// Should contain status labels.
+	if !strings.Contains(output, "modified") {
+		t.Error("expected 'modified' in output")
+	}
+	if !strings.Contains(output, "missing") {
+		t.Error("expected 'missing' in output")
+	}
+	if !strings.Contains(output, "orphan") {
+		t.Error("expected 'orphan' in output")
+	}
+}
+
+func TestPrintReportAllStatuses(t *testing.T) {
+	report := &StatusReport{
+		Entries: []StatusEntry{
+			{".config/clean.conf", StatusClean},
+			{".config/modified.conf", StatusModified},
+			{".config/missing.conf", StatusMissing},
+			{".config/orphan.conf", StatusOrphan},
+		},
+	}
+
+	// Non-verbose: should only show non-clean.
+	output := captureStdout(func() {
+		PrintReport(report, false, ScopeFiles)
+	})
+
+	if strings.Contains(output, "clean") {
+		t.Error("non-verbose should not show clean entries")
+	}
+	if !strings.Contains(output, "modified") {
+		t.Error("expected 'modified' in output")
+	}
+}
