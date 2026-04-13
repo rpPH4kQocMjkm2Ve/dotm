@@ -16,7 +16,9 @@ import (
 func TestDiffPackagesInstall(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755) // not installed
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	} // not installed
 
 	tomlContent := pkgManagerTOML(checkScript) + `
 [mock]
@@ -37,7 +39,9 @@ packages = ["new-pkg"]
 func TestDiffPackagesRemove(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755) // installed
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	} // installed
 
 	// Save a manifest with an old package.
 	prevPkgs := &manifest.PkgManifest{
@@ -62,7 +66,9 @@ func TestDiffPackagesRemove(t *testing.T) {
 func TestDiffPackagesNoChanges(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := pkgManagerTOML(checkScript) + `
 [mock]
@@ -86,7 +92,9 @@ packages = ["git"]
 func TestDiffServicesEnable(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755) // not enabled
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	} // not enabled
 
 	tomlContent := svcManagerTOML(checkScript) + `
 [mock]
@@ -107,7 +115,9 @@ services = ["new-svc"]
 func TestDiffServicesDisable(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755) // enabled
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	} // enabled
 
 	prevSvcs := &manifest.PkgManifest{
 		Services: []manifest.ServiceEntry{{Name: "old-svc", Manager: "mock"}},
@@ -132,7 +142,9 @@ func TestDiffServicesDisable(t *testing.T) {
 func TestApplyPackagesDryRun(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := pkgManagerTOML(checkScript) + `
 [mock]
@@ -165,7 +177,9 @@ packages = ["new-pkg"]
 func TestApplyPackagesAlreadyInstalled(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := pkgManagerTOML(checkScript) + `
 [mock]
@@ -192,7 +206,9 @@ packages = ["git"]
 func TestApplyPackagesRemoveObsolete(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	prevPkgs := &manifest.PkgManifest{
 		Packages: []manifest.PackageEntry{{Name: "old-pkg", Manager: "mock"}},
@@ -220,7 +236,9 @@ func TestApplyPackagesRemoveObsolete(t *testing.T) {
 func TestApplyPackagesRemoveObsoleteDryRun(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	prevPkgs := &manifest.PkgManifest{
 		Packages: []manifest.PackageEntry{{Name: "old-pkg", Manager: "mock"}},
@@ -257,7 +275,9 @@ func TestApplyPackagesRemoveObsoleteDryRun(t *testing.T) {
 func TestApplyServicesDryRun(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := svcManagerTOML(checkScript) + `
 [mock]
@@ -290,7 +310,9 @@ services = ["new-svc"]
 func TestApplyServicesAlreadyEnabled(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := svcManagerTOML(checkScript) + `
 [mock]
@@ -317,7 +339,9 @@ services = ["sshd"]
 func TestApplyServicesDisableObsolete(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	prevSvcs := &manifest.PkgManifest{
 		Services: []manifest.ServiceEntry{{Name: "old-svc", Manager: "mock"}},
@@ -344,7 +368,9 @@ func TestApplyServicesDisableObsolete(t *testing.T) {
 func TestApplyServicesDisableObsoleteDryRun(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	prevSvcs := &manifest.PkgManifest{
 		Services: []manifest.ServiceEntry{{Name: "old-svc", Manager: "mock"}},
@@ -620,7 +646,9 @@ func TestCheckReturnsFalseForNonZeroExit(t *testing.T) {
 func TestApplyPackagesRenderError(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := pkgManagerTOML(checkScript) + `
 [mock]
@@ -647,7 +675,9 @@ packages = ["{{ .missing_pkg }}"]
 func TestApplyPackagesDryRunNoInstall(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := pkgManagerTOML(checkScript) + `
 [mock]
@@ -751,7 +781,9 @@ remove = "true"
 func TestApplyPackagesEmptyTemplateRender(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := pkgManagerTOML(checkScript) + `
 [mock]
@@ -783,7 +815,9 @@ packages = ["{{ .empty_pkg }}"]
 func TestApplyServicesRenderError(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := svcManagerTOML(checkScript) + `
 [mock]
@@ -809,7 +843,9 @@ services = ["{{ .missing_svc }}"]
 func TestApplyServicesDryRunNoEnable(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := svcManagerTOML(checkScript) + `
 [mock]
@@ -910,7 +946,9 @@ disable = "true"
 func TestApplyServicesEmptyTemplateRender(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := svcManagerTOML(checkScript) + `
 [mock]

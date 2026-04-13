@@ -23,9 +23,13 @@ func captureStdout(fn func()) string {
 	os.Stdout = w
 	defer func() { os.Stdout = old }()
 	fn()
-	w.Close()
+	if err := w.Close(); err != nil {
+		panic(fmt.Sprintf("w.Close: %v", err))
+	}
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	if _, err := io.Copy(&buf, r); err != nil {
+		panic(fmt.Sprintf("io.Copy: %v", err))
+	}
 	return buf.String()
 }
 
@@ -38,9 +42,13 @@ func captureStderr(fn func()) string {
 	os.Stderr = w
 	defer func() { os.Stderr = old }()
 	fn()
-	w.Close()
+	if err := w.Close(); err != nil {
+		panic(fmt.Sprintf("w.Close: %v", err))
+	}
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	if _, err := io.Copy(&buf, r); err != nil {
+		panic(fmt.Sprintf("io.Copy: %v", err))
+	}
 	return buf.String()
 }
 
@@ -105,7 +113,9 @@ func loadConfigNoPkgsOrSvcs(t *testing.T, sourceDir, checkScript string) *config
 func loadTOML(t *testing.T, sourceDir, tomlContent string) *config.Config {
 	t.Helper()
 	tomlPath := filepath.Join(sourceDir, "dotm.toml")
-	os.WriteFile(tomlPath, []byte(tomlContent), 0o644)
+	if err := os.WriteFile(tomlPath, []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cfg, err := config.Load(tomlPath)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -142,7 +152,9 @@ func TestStatusPackagesEmptyManagers(t *testing.T) {
 func TestStatusPackagesInstalled(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := loadConfigWithPackages(t, sourceDir, checkScript+" {{.Name}}", []string{"git"})
 	eng := newEngine(t, sourceDir, cfg)
@@ -162,7 +174,9 @@ func TestStatusPackagesInstalled(t *testing.T) {
 func TestStatusPackagesMissing(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := loadConfigWithPackages(t, sourceDir, checkScript+" {{.Name}}", []string{"vim"})
 	eng := newEngine(t, sourceDir, cfg)
@@ -182,7 +196,9 @@ func TestStatusPackagesMissing(t *testing.T) {
 func TestStatusPackagesTemplateEmpty(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := loadConfigWithPackages(t, sourceDir, checkScript, []string{"{{ .pkg }}"})
 	eng := newEngine(t, sourceDir, cfg)
@@ -240,7 +256,9 @@ func TestStatusPackagesCheckError(t *testing.T) {
 func TestStatusPackagesObsolete(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	prevPkgs := &manifest.PkgManifest{
 		Packages: []manifest.PackageEntry{{Name: "old", Manager: "mock"}},
@@ -264,7 +282,9 @@ func TestStatusPackagesObsolete(t *testing.T) {
 func TestStatusPackagesObsoleteNotInstalled(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	prevPkgs := &manifest.PkgManifest{
 		Packages: []manifest.PackageEntry{{Name: "old", Manager: "mock"}},
@@ -323,7 +343,9 @@ func TestStatusServicesEmptyManagers(t *testing.T) {
 func TestStatusServicesEnabled(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := loadConfigWithServices(t, sourceDir, checkScript, []string{"sshd"})
 	eng := newEngine(t, sourceDir, cfg)
@@ -343,7 +365,9 @@ func TestStatusServicesEnabled(t *testing.T) {
 func TestStatusServicesDisabled(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := loadConfigWithServices(t, sourceDir, checkScript, []string{"sshd"})
 	eng := newEngine(t, sourceDir, cfg)
@@ -363,7 +387,9 @@ func TestStatusServicesDisabled(t *testing.T) {
 func TestStatusServicesTemplateEmpty(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := loadConfigWithServices(t, sourceDir, checkScript, []string{"{{ .svc }}"})
 	eng := newEngine(t, sourceDir, cfg)
@@ -401,7 +427,9 @@ func TestStatusServicesTemplateError(t *testing.T) {
 func TestStatusServicesObsoleteEnabled(t *testing.T) {
 	sourceDir := t.TempDir()
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	prevPkgs := &manifest.PkgManifest{
 		Services: []manifest.ServiceEntry{{Name: "old-svc", Manager: "mock"}},

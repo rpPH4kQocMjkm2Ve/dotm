@@ -142,8 +142,10 @@ func TestSecureDirCanCreateFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	defer os.Remove(f.Name())
-	f.Close()
+	defer func() {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+	}()
 
 	// Verify file exists.
 	if _, err := os.Stat(f.Name()); err != nil {

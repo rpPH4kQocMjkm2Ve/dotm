@@ -51,7 +51,9 @@ func TestApplySymlinksSkipsIfCorrect(t *testing.T) {
 	destDir := t.TempDir()
 
 	linkPath := filepath.Join(destDir, "link.txt")
-	os.Symlink("/some/target", linkPath)
+	if err := os.Symlink("/some/target", linkPath); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:     destDir,
@@ -87,7 +89,9 @@ func TestApplySymlinksReplacesWrongTarget(t *testing.T) {
 	destDir := t.TempDir()
 
 	linkPath := filepath.Join(destDir, "link.txt")
-	os.Symlink("/old/target", linkPath)
+	if err := os.Symlink("/old/target", linkPath); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:     destDir,
@@ -122,7 +126,9 @@ func TestApplySymlinksReplacesRegularFile(t *testing.T) {
 	destDir := t.TempDir()
 
 	linkPath := filepath.Join(destDir, "link.txt")
-	os.WriteFile(linkPath, []byte("regular file"), 0o644)
+	if err := os.WriteFile(linkPath, []byte("regular file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:     destDir,
@@ -224,9 +230,15 @@ func TestDiffClean(t *testing.T) {
 	destDir := t.TempDir()
 
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("same"), 0o644)
-	os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("same"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("same"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("same"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{Dest: destDir, Shell: "bash"}
 	state := &prompt.State{
@@ -250,9 +262,15 @@ func TestDiffModified(t *testing.T) {
 	destDir := t.TempDir()
 
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644)
-	os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("dest"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("dest"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{Dest: destDir, Shell: "bash"}
 	state := &prompt.State{
@@ -276,8 +294,12 @@ func TestDiffNewFile(t *testing.T) {
 	destDir := t.TempDir()
 
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "new.conf"), []byte("new content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "new.conf"), []byte("new content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{Dest: destDir, Shell: "bash"}
 	state := &prompt.State{
@@ -322,11 +344,17 @@ func TestDiffTemplateFile(t *testing.T) {
 	destDir := t.TempDir()
 
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "greet.txt.tmpl"), []byte("hello {{ .hostname }}"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "greet.txt.tmpl"), []byte("hello {{ .hostname }}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	hostname, _ := os.Hostname()
-	os.WriteFile(filepath.Join(destDir, "greet.txt"), []byte("hello "+hostname), 0o644)
+	if err := os.WriteFile(filepath.Join(destDir, "greet.txt"), []byte("hello "+hostname), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{Dest: destDir, Shell: "bash"}
 	state := &prompt.State{
@@ -350,12 +378,20 @@ func TestDiffIgnoredFile(t *testing.T) {
 	destDir := t.TempDir()
 
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.secret"), []byte("source"), 0o644)
-	os.WriteFile(filepath.Join(destDir, "test.secret"), []byte("dest"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.secret"), []byte("source"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "test.secret"), []byte("dest"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create ignore.tmpl.
-	os.WriteFile(filepath.Join(sourceDir, "ignore.tmpl"), []byte("*.secret\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "ignore.tmpl"), []byte("*.secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{Dest: destDir, Shell: "bash"}
 	state := &prompt.State{
@@ -389,8 +425,12 @@ func TestRunScriptsAlways(t *testing.T) {
 	}
 
 	scriptPath := filepath.Join(sourceDir, "scripts", "test.sh")
-	os.MkdirAll(filepath.Dir(scriptPath), 0o755)
-	os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'ran' > "+outFile), 0o644)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'ran' > "+outFile), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:  "/tmp",
@@ -435,8 +475,12 @@ func TestRunScriptsOnChangeSkipsUnchanged(t *testing.T) {
 	}
 
 	scriptPath := filepath.Join(sourceDir, "scripts", "on_change.sh")
-	os.MkdirAll(filepath.Dir(scriptPath), 0o755)
-	os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'ran' > "+outFile), 0o644)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'ran' > "+outFile), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:  "/tmp",
@@ -464,7 +508,9 @@ func TestRunScriptsOnChangeSkipsUnchanged(t *testing.T) {
 	}
 
 	// Remove output and run again — should be skipped.
-	os.Remove(outFile)
+	if err := os.Remove(outFile); err != nil {
+		t.Fatal(err)
+	}
 	eng2, _ := New(cfg, state, sourceDir, false)
 	if err := eng2.runScripts(); err != nil {
 		t.Fatalf("runScripts (2nd): %v", err)
@@ -486,8 +532,12 @@ func TestRunScriptsDryRun(t *testing.T) {
 	}
 
 	scriptPath := filepath.Join(sourceDir, "scripts", "test.sh")
-	os.MkdirAll(filepath.Dir(scriptPath), 0o755)
-	os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'should not run'"), 0o644)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'should not run'"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:  "/tmp",
@@ -536,8 +586,12 @@ func TestRecordManifest(t *testing.T) {
 	destDir := t.TempDir()
 
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:  destDir,
@@ -598,12 +652,18 @@ func TestApplyFullCycle(t *testing.T) {
 
 	// Create files.
 	filesDir := filepath.Join(sourceDir, "files", ".config")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "app.conf"), []byte("setting=value"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "app.conf"), []byte("setting=value"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create symlink.
 	linkTarget := filepath.Join(sourceDir, "target")
-	os.WriteFile(linkTarget, []byte("target data"), 0o644)
+	if err := os.WriteFile(linkTarget, []byte("target data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:     destDir,
@@ -806,11 +866,17 @@ func TestStatusIgnoresFile(t *testing.T) {
 	destDir := t.TempDir()
 
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.secret"), []byte("source"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.secret"), []byte("source"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create ignore.tmpl.
-	os.WriteFile(filepath.Join(sourceDir, "ignore.tmpl"), []byte("*.secret\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "ignore.tmpl"), []byte("*.secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{Dest: destDir, Shell: "bash"}
 	state := &prompt.State{
@@ -923,12 +989,18 @@ func TestApplyFullCycleWithPackages(t *testing.T) {
 
 	// Create files.
 	filesDir := filepath.Join(sourceDir, "files", ".config")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "app.conf"), []byte("setting=value"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "app.conf"), []byte("setting=value"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create mock check script (returns 0 = installed).
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create dotm.toml with packages.
 	tomlContent := `
@@ -946,7 +1018,9 @@ disable = "true"
 packages = ["git"]
 `
 	tomlPath := filepath.Join(sourceDir, "dotm.toml")
-	os.WriteFile(tomlPath, []byte(tomlContent), 0o644)
+	if err := os.WriteFile(tomlPath, []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := config.Load(tomlPath)
 	if err != nil {
@@ -985,11 +1059,17 @@ func TestApplyDryRunWithPackages(t *testing.T) {
 
 	// Create files (same as full cycle test).
 	filesDir := filepath.Join(sourceDir, "files", ".config")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "app.conf"), []byte("setting=value"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "app.conf"), []byte("setting=value"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755)
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tomlContent := `
 dest = "` + destDir + `"
@@ -1006,7 +1086,9 @@ disable = "true"
 packages = ["new-pkg"]
 `
 	tomlPath := filepath.Join(sourceDir, "dotm.toml")
-	os.WriteFile(tomlPath, []byte(tomlContent), 0o644)
+	if err := os.WriteFile(tomlPath, []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := config.Load(tomlPath)
 	if err != nil {
@@ -1042,10 +1124,14 @@ func TestApplyWithServices(t *testing.T) {
 	// Create a sentinel script that touches a file when run.
 	sentinel := filepath.Join(sourceDir, "service-enabled.sentinel")
 	enableScript := filepath.Join(sourceDir, "enable.sh")
-	os.WriteFile(enableScript, []byte("#!/bin/bash\ntouch "+sentinel), 0o755)
+	if err := os.WriteFile(enableScript, []byte("#!/bin/bash\ntouch "+sentinel), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	checkScript := filepath.Join(sourceDir, "check.sh")
-	os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755) // not enabled
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	} // not enabled
 
 	tomlContent := `
 dest = "` + destDir + `"
@@ -1062,7 +1148,9 @@ disable = "true"
 services = ["sshd"]
 `
 	tomlPath := filepath.Join(sourceDir, "dotm.toml")
-	os.WriteFile(tomlPath, []byte(tomlContent), 0o644)
+	if err := os.WriteFile(tomlPath, []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := config.Load(tomlPath)
 	if err != nil {
@@ -1096,8 +1184,12 @@ func TestStatusVerbose(t *testing.T) {
 	destDir := t.TempDir()
 
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{Dest: destDir, Shell: "bash"}
 	state := &prompt.State{
@@ -1130,9 +1222,15 @@ func TestDiffVerbose(t *testing.T) {
 	destDir := t.TempDir()
 
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("new content"), 0o644)
-	os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("old content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("new content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("old content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{Dest: destDir, Shell: "bash"}
 	state := &prompt.State{

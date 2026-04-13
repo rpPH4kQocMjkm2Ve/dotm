@@ -143,7 +143,9 @@ func TestLoadNoFile(t *testing.T) {
 func TestLoadWithPatterns(t *testing.T) {
 	dir := t.TempDir()
 	content := "*.bak\n# comment\n\n.git/**\n"
-	os.WriteFile(filepath.Join(dir, "ignore.tmpl"), []byte(content), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "ignore.tmpl"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	data := map[string]any{
 		"homeDir":   "/home/test",
@@ -173,7 +175,9 @@ func TestLoadWithTemplate(t *testing.T) {
 	content := `{{ if .skipGames }}games/**{{ end }}
 *.tmp
 `
-	os.WriteFile(filepath.Join(dir, "ignore.tmpl"), []byte(content), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "ignore.tmpl"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	data := map[string]any{
 		"skipGames": true,
@@ -200,7 +204,9 @@ func TestLoadWithTemplateFalse(t *testing.T) {
 	content := `{{ if .skipGames }}games/**{{ end }}
 *.tmp
 `
-	os.WriteFile(filepath.Join(dir, "ignore.tmpl"), []byte(content), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "ignore.tmpl"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	data := map[string]any{
 		"skipGames": false,
@@ -225,7 +231,9 @@ func TestLoadWithTemplateFalse(t *testing.T) {
 func TestLoadCommentsAndBlanksSkipped(t *testing.T) {
 	dir := t.TempDir()
 	content := "# full line comment\n\n   # indented comment\n   \nactual.pattern\n"
-	os.WriteFile(filepath.Join(dir, "ignore.tmpl"), []byte(content), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "ignore.tmpl"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	data := map[string]any{
 		"homeDir":   "/home/test",

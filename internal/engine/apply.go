@@ -150,10 +150,8 @@ func (e *Engine) recordManifest(writtenAbs []string) {
 		symlinkKeys = append(symlinkKeys, linkRel)
 	}
 	sort.Strings(symlinkKeys)
-	var symlinks []string
-	for _, linkRel := range symlinkKeys {
-		symlinks = append(symlinks, linkRel)
-	}
+	symlinks := make([]string, 0, len(symlinkKeys))
+	symlinks = append(symlinks, symlinkKeys...)
 
 	e.state.SetManifest(files, dirs, symlinks)
 }
@@ -484,13 +482,15 @@ func execScript(content []byte, shell string) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 
 	if _, err := tmp.Write(content); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
-	tmp.Close()
+	if err := tmp.Close(); err != nil {
+		return err
+	}
 
 	if err := os.Chmod(tmp.Name(), 0o700); err != nil {
 		return err
@@ -509,13 +509,13 @@ func showDiff(destPath, label string, oldContent, newContent []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(oldTmp)
+	defer func() { _ = os.Remove(oldTmp) }()
 
 	newTmp, err := writeTmp("dotm-new-", newContent)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(newTmp)
+	defer func() { _ = os.Remove(newTmp) }()
 
 	cmd := exec.Command("diff", "--color=auto", "-u",
 		"--label", "dest:"+label,
@@ -546,11 +546,14 @@ func writeTmp(prefix string, content []byte) (string, error) {
 		return "", err
 	}
 	if _, err := f.Write(content); err != nil {
-		f.Close()
-		os.Remove(f.Name())
+		_ = f.Close()
+		_ = os.Remove(f.Name())
 		return "", err
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(f.Name())
+		return "", err
+	}
 	return f.Name(), nil
 }
 

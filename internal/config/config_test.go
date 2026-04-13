@@ -190,7 +190,9 @@ func TestLoadMinimal(t *testing.T) {
 	dir := t.TempDir()
 	content := `dest = "/home/user"` + "\n"
 	path := filepath.Join(dir, "dotm.toml")
-	os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -208,7 +210,9 @@ func TestLoadCustomShell(t *testing.T) {
 	dir := t.TempDir()
 	content := "dest = \"/home/user\"\nshell = \"zsh\"\n"
 	path := filepath.Join(dir, "dotm.toml")
-	os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -228,7 +232,9 @@ func TestLoadExpandsHomeDest(t *testing.T) {
 	dir := t.TempDir()
 	content := `dest = "~"` + "\n"
 	path := filepath.Join(dir, "dotm.toml")
-	os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -249,7 +255,9 @@ func TestLoadMissingFile(t *testing.T) {
 func TestLoadInvalidToml(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "dotm.toml")
-	os.WriteFile(path, []byte("not valid [[[toml"), 0o644)
+	if err := os.WriteFile(path, []byte("not valid [[[toml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := Load(path)
 	if err == nil {
@@ -261,7 +269,9 @@ func TestLoadMissingDest(t *testing.T) {
 	dir := t.TempDir()
 	content := "# no dest\n"
 	path := filepath.Join(dir, "dotm.toml")
-	os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := Load(path)
 	if err == nil {
@@ -286,7 +296,9 @@ type = "string"
 question = "Preferred editor?"
 `
 	path := filepath.Join(dir, "dotm.toml")
-	os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -311,7 +323,9 @@ trigger = "on_change"
 template = true
 `
 	path := filepath.Join(dir, "dotm.toml")
-	os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -556,7 +570,9 @@ remove = "sudo pacman -Rns {{.Name}}"
 packages = ["git", "zsh"]
 `
 	path := filepath.Join(dir, "dotm.toml")
-	os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -583,7 +599,9 @@ dest = "/home/user"
 packages = ["git"]
 `
 	path := filepath.Join(dir, "dotm.toml")
-	os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := Load(path)
 	if err == nil {
@@ -598,7 +616,9 @@ func TestLoadNoManagersNoDest(t *testing.T) {
 packages = ["git"]
 `
 	path := filepath.Join(dir, "dotm.toml")
-	os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := Load(path)
 	if err == nil {

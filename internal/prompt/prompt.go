@@ -105,10 +105,10 @@ func (s *State) Save(sourceDir string) error {
 		return fmt.Errorf("create temp: %w", err)
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	if err := toml.NewEncoder(tmp).Encode(s); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("encode: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
@@ -182,7 +182,9 @@ func Resolve(cfg *config.Config, s *State, r io.Reader, w io.Writer) (bool, erro
 
 func askBool(scanner *bufio.Scanner, w io.Writer, question string) (bool, error) {
 	for {
-		fmt.Fprintf(w, "%s [y/n]: ", question)
+		if _, err := fmt.Fprintf(w, "%s [y/n]: ", question); err != nil {
+			return false, err
+		}
 		if !scanner.Scan() {
 			if err := scanner.Err(); err != nil {
 				return false, err
@@ -196,12 +198,16 @@ func askBool(scanner *bufio.Scanner, w io.Writer, question string) (bool, error)
 		case "n", "no":
 			return false, nil
 		}
-		fmt.Fprintf(w, "  please answer y or n\n")
+		if _, err := fmt.Fprintf(w, "  please answer y or n\n"); err != nil {
+			return false, err
+		}
 	}
 }
 
 func askString(scanner *bufio.Scanner, w io.Writer, question string) (string, error) {
-	fmt.Fprintf(w, "%s: ", question)
+	if _, err := fmt.Fprintf(w, "%s: ", question); err != nil {
+		return "", err
+	}
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
 			return "", err

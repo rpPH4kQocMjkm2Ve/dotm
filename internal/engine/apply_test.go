@@ -64,7 +64,9 @@ func TestIsValidShellAbsolutePath(t *testing.T) {
 
 	// Create a directory.
 	dirPath := filepath.Join(tmp, "dirshell")
-	os.Mkdir(dirPath, 0o755)
+	if err := os.Mkdir(dirPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		name  string
@@ -95,12 +97,18 @@ func TestApplyPermsFallback(t *testing.T) {
 
 	// Create dotm.toml.
 	cfgContent := `dest = "` + destDir + `"`
-	os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create files/ with a test file.
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filepath.Join(filesDir, ".config"), 0o755)
-	os.WriteFile(filepath.Join(filesDir, ".config", "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filepath.Join(filesDir, ".config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, ".config", "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Do NOT create a perms file.
 	cfg, err := config.Load(filepath.Join(sourceDir, "dotm.toml"))
@@ -145,16 +153,24 @@ func TestApplyPermsFallbackDoesNotOverrideExplicitPerms(t *testing.T) {
 
 	// Create dotm.toml.
 	cfgContent := `dest = "` + destDir + `"`
-	os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create files/ with a test file.
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filepath.Join(filesDir, ".config"), 0o755)
-	os.WriteFile(filepath.Join(filesDir, ".config", "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filepath.Join(filesDir, ".config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, ".config", "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create a perms file that sets 0o600.
 	permsContent := `.config/** 0600 - -` + "\n"
-	os.WriteFile(filepath.Join(sourceDir, "perms"), []byte(permsContent), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "perms"), []byte(permsContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := config.Load(filepath.Join(sourceDir, "dotm.toml"))
 	if err != nil {
@@ -196,12 +212,18 @@ func TestApplyPermsFallbackDryRun(t *testing.T) {
 
 	// Create dotm.toml.
 	cfgContent := `dest = "` + destDir + `"`
-	os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create files/ with a test file.
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filepath.Join(filesDir, ".config"), 0o755)
-	os.WriteFile(filepath.Join(filesDir, ".config", "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filepath.Join(filesDir, ".config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, ".config", "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// No perms file.
 	cfg, err := config.Load(filepath.Join(sourceDir, "dotm.toml"))
@@ -239,8 +261,12 @@ func TestWalkAndWriteInitialPermissions(t *testing.T) {
 
 	// Create files/ with a test file.
 	filesDir := filepath.Join(sourceDir, "files", ".config")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "secret.conf"), []byte("secret=value"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "secret.conf"), []byte("secret=value"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:  destDir,
@@ -327,7 +353,7 @@ func TestWriteTmp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("writeTmp: %v", err)
 	}
-	defer os.Remove(path)
+	defer func() { _ = os.Remove(path) }()
 
 	// Verify file exists and content matches.
 	data, err := os.ReadFile(path)
@@ -349,7 +375,7 @@ func TestWriteTmpEmptyContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("writeTmp: %v", err)
 	}
-	defer os.Remove(path)
+	defer func() { _ = os.Remove(path) }()
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -365,15 +391,21 @@ func TestWriteTmpEmptyContent(t *testing.T) {
 func TestFileContent(t *testing.T) {
 	sourceDir := t.TempDir()
 	filesDir := filepath.Join(sourceDir, "files", ".config")
-	os.MkdirAll(filesDir, 0o755)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Plain file.
 	plainPath := filepath.Join(filesDir, "plain.conf")
-	os.WriteFile(plainPath, []byte("plain content"), 0o644)
+	if err := os.WriteFile(plainPath, []byte("plain content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Template file.
 	tmplPath := filepath.Join(filesDir, "templated.conf.tmpl")
-	os.WriteFile(tmplPath, []byte("hostname: {{ .hostname }}"), 0o644)
+	if err := os.WriteFile(tmplPath, []byte("hostname: {{ .hostname }}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:  t.TempDir(),
@@ -520,15 +552,23 @@ func TestApplyPermsInvalidPermsFile(t *testing.T) {
 
 	// Create dotm.toml.
 	cfgContent := `dest = "` + destDir + `"`
-	os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create files/ with a test file.
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filepath.Join(filesDir, ".config"), 0o755)
-	os.WriteFile(filepath.Join(filesDir, ".config", "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filepath.Join(filesDir, ".config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, ".config", "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create invalid perms file.
-	os.WriteFile(filepath.Join(sourceDir, "perms"), []byte("invalid perms content"), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "perms"), []byte("invalid perms content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := config.Load(filepath.Join(sourceDir, "dotm.toml"))
 	if err != nil {
@@ -561,16 +601,24 @@ func TestApplyPermsDryRunWithPermsFile(t *testing.T) {
 
 	// Create dotm.toml.
 	cfgContent := `dest = "` + destDir + `"`
-	os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create files/ with a test file.
 	filesDir := filepath.Join(sourceDir, "files")
-	os.MkdirAll(filepath.Join(filesDir, ".config"), 0o755)
-	os.WriteFile(filepath.Join(filesDir, ".config", "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filepath.Join(filesDir, ".config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, ".config", "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create perms file.
 	permsContent := `.config/** 0600 - -` + "\n"
-	os.WriteFile(filepath.Join(sourceDir, "perms"), []byte(permsContent), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "perms"), []byte(permsContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := config.Load(filepath.Join(sourceDir, "dotm.toml"))
 	if err != nil {
@@ -608,13 +656,21 @@ func TestWalkAndWriteSkipIdentical(t *testing.T) {
 
 	// Create files/ with a test file.
 	filesDir := filepath.Join(sourceDir, "files", ".config")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("same content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("same content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create identical file in dest.
 	destPath := filepath.Join(destDir, ".config", "test.conf")
-	os.MkdirAll(filepath.Dir(destPath), 0o755)
-	os.WriteFile(destPath, []byte("same content"), 0o644)
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(destPath, []byte("same content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:  destDir,
@@ -786,7 +842,9 @@ func TestNewLoadIgnoreError(t *testing.T) {
 	destDir := t.TempDir()
 
 	// Create invalid ignore.tmpl.
-	os.WriteFile(filepath.Join(sourceDir, "ignore.tmpl"), []byte("{{ invalid }}"), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "ignore.tmpl"), []byte("{{ invalid }}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &config.Config{
 		Dest:  destDir,

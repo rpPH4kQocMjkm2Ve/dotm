@@ -277,7 +277,9 @@ func TestComputeActionsSpecificGroup(t *testing.T) {
 func TestApplyChmodFile(t *testing.T) {
 	skipIfNotRoot(t)
 	f := filepath.Join(t.TempDir(), "test.conf")
-	os.WriteFile(f, []byte("content"), 0o777)
+	if err := os.WriteFile(f, []byte("content"), 0o777); err != nil {
+		t.Fatal(err)
+	}
 
 	ok, errs := ApplyActions([]PermAction{makeAction(f, 0o644, "", "")}, false)
 	if !ok {
@@ -289,7 +291,9 @@ func TestApplyChmodFile(t *testing.T) {
 func TestApplyChmodDirectory(t *testing.T) {
 	skipIfNotRoot(t)
 	d := filepath.Join(t.TempDir(), "subdir")
-	os.Mkdir(d, 0o777)
+	if err := os.Mkdir(d, 0o777); err != nil {
+		t.Fatal(err)
+	}
 
 	ok, errs := ApplyActions([]PermAction{makeAction(d, 0o755, "", "")}, false)
 	if !ok {
@@ -301,7 +305,9 @@ func TestApplyChmodDirectory(t *testing.T) {
 func TestApplyChmodRestrictive(t *testing.T) {
 	skipIfNotRoot(t)
 	f := filepath.Join(t.TempDir(), "secret")
-	os.WriteFile(f, []byte("secret"), 0o644)
+	if err := os.WriteFile(f, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	ok, _ := ApplyActions([]PermAction{makeAction(f, 0o600, "", "")}, false)
 	if !ok {
@@ -326,8 +332,12 @@ func TestApplyChmodNonexistent(t *testing.T) {
 func TestApplySkipModeNoChmod(t *testing.T) {
 	skipIfNotRoot(t)
 	f := filepath.Join(t.TempDir(), "test")
-	os.WriteFile(f, []byte(""), 0o644)
-	os.Chmod(f, 0o777) // explicit chmod — WriteFile is subject to umask
+	if err := os.WriteFile(f, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(f, 0o777); err != nil {
+		t.Fatal(err)
+	} // explicit chmod — WriteFile is subject to umask
 
 	ok, _ := ApplyActions([]PermAction{makeAction(f, -1, "", "")}, false)
 	if !ok {
@@ -341,7 +351,9 @@ func TestApplySkipModeNoChmod(t *testing.T) {
 func TestApplyChownToRoot(t *testing.T) {
 	skipIfNotRoot(t)
 	f := filepath.Join(t.TempDir(), "test")
-	os.WriteFile(f, []byte(""), 0o644)
+	if err := os.WriteFile(f, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	ok, errs := ApplyActions([]PermAction{makeAction(f, -1, "root", "root")}, false)
 	if !ok {
@@ -356,7 +368,9 @@ func TestApplyChownNonRootUser(t *testing.T) {
 	skipIfNotRoot(t)
 	name, expectedUID := getNonRootUser(t)
 	f := filepath.Join(t.TempDir(), "test")
-	os.WriteFile(f, []byte(""), 0o644)
+	if err := os.WriteFile(f, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	ok, errs := ApplyActions([]PermAction{makeAction(f, -1, name, "")}, false)
 	if !ok {
@@ -370,7 +384,9 @@ func TestApplyChownGroupOnly(t *testing.T) {
 	skipIfNotRoot(t)
 	name, expectedGID := getNonRootGroup(t)
 	f := filepath.Join(t.TempDir(), "test")
-	os.WriteFile(f, []byte(""), 0o644)
+	if err := os.WriteFile(f, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	ok, errs := ApplyActions([]PermAction{makeAction(f, -1, "", name)}, false)
 	if !ok {
@@ -383,7 +399,9 @@ func TestApplyChownGroupOnly(t *testing.T) {
 func TestApplyChownNonexistentUser(t *testing.T) {
 	skipIfNotRoot(t)
 	f := filepath.Join(t.TempDir(), "test")
-	os.WriteFile(f, []byte(""), 0o644)
+	if err := os.WriteFile(f, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	ok, errs := ApplyActions([]PermAction{
 		makeAction(f, -1, "nonexistent_user_xyz_12345", ""),
@@ -401,7 +419,9 @@ func TestApplyChownNonexistentUser(t *testing.T) {
 func TestApplyChmodAndChown(t *testing.T) {
 	skipIfNotRoot(t)
 	f := filepath.Join(t.TempDir(), "test")
-	os.WriteFile(f, []byte(""), 0o777)
+	if err := os.WriteFile(f, []byte(""), 0o777); err != nil {
+		t.Fatal(err)
+	}
 
 	ok, errs := ApplyActions([]PermAction{makeAction(f, 0o600, "root", "root")}, false)
 	if !ok {
@@ -417,7 +437,9 @@ func TestApplyPartialFailure(t *testing.T) {
 	skipIfNotRoot(t)
 	tmp := t.TempDir()
 	good := filepath.Join(tmp, "good")
-	os.WriteFile(good, []byte(""), 0o777)
+	if err := os.WriteFile(good, []byte(""), 0o777); err != nil {
+		t.Fatal(err)
+	}
 
 	actions := []PermAction{
 		makeAction(filepath.Join(tmp, "nonexistent"), 0o644, "", ""),
@@ -438,8 +460,12 @@ func TestApplyPartialFailure(t *testing.T) {
 func TestApplyDryRunNoChanges(t *testing.T) {
 	skipIfNotRoot(t)
 	f := filepath.Join(t.TempDir(), "test")
-	os.WriteFile(f, []byte(""), 0o644)
-	os.Chmod(f, 0o777) // explicit chmod — WriteFile is subject to umask
+	if err := os.WriteFile(f, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(f, 0o777); err != nil {
+		t.Fatal(err)
+	} // explicit chmod — WriteFile is subject to umask
 
 	ok, _ := ApplyActions([]PermAction{makeAction(f, 0o644, "root", "root")}, true)
 	if !ok {
@@ -488,13 +514,19 @@ func TestFullPipeline(t *testing.T) {
 	var managed []string
 	for _, d := range dirs {
 		p := filepath.Join(root, d)
-		os.MkdirAll(p, 0o777)
+		if err := os.MkdirAll(p, 0o777); err != nil {
+			t.Fatal(err)
+		}
 		managed = append(managed, p)
 	}
 	for _, f := range files {
 		p := filepath.Join(root, f)
-		os.MkdirAll(filepath.Dir(p), 0o777)
-		os.WriteFile(p, []byte(""), 0o777)
+		if err := os.MkdirAll(filepath.Dir(p), 0o777); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(""), 0o777); err != nil {
+			t.Fatal(err)
+		}
 		managed = append(managed, p)
 	}
 
@@ -559,10 +591,14 @@ func TestFullPipelineIdempotent(t *testing.T) {
 	root := t.TempDir()
 
 	for _, d := range []string{"etc", "etc/security"} {
-		os.MkdirAll(filepath.Join(root, d), 0o777)
+		if err := os.MkdirAll(filepath.Join(root, d), 0o777); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, f := range []string{"etc/pacman.conf", "etc/security/faillock.conf"} {
-		os.WriteFile(filepath.Join(root, f), []byte(""), 0o777)
+		if err := os.WriteFile(filepath.Join(root, f), []byte(""), 0o777); err != nil {
+			t.Fatal(err)
+		}
 	}
 	managed := []string{
 		filepath.Join(root, "etc"),
@@ -645,7 +681,9 @@ func TestPamLastMatchWinsOverridesSafe(t *testing.T) {
 func TestIsDirWithRealFilesystem(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "file.txt")
-	os.WriteFile(filePath, []byte("content"), 0o644)
+	if err := os.WriteFile(filePath, []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	if !isDir(dir) {
 		t.Error("expected TempDir to be a directory")
@@ -660,8 +698,12 @@ func TestIsDirWithRealFilesystem(t *testing.T) {
 
 func TestComputeActionsWithRealIsDir(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "subdir"), 0o755)
-	os.WriteFile(filepath.Join(dir, "file.txt"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	rules, _ := ParseRules("** 0644 - -")
 	managed := []string{
@@ -696,7 +738,9 @@ func TestApplyDryRunOutput(t *testing.T) {
 	defer func() { os.Stdout = oldStdout }()
 
 	ok, errs := ApplyActions(actions, true)
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("w.Close: %v", err)
+	}
 
 	if !ok {
 		t.Fatalf("dry run should succeed: %v", errs)
@@ -704,7 +748,9 @@ func TestApplyDryRunOutput(t *testing.T) {
 
 	// Read captured output.
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("buf.ReadFrom: %v", err)
+	}
 	output := buf.String()
 
 	// Verify output contains expected values.
@@ -727,7 +773,9 @@ func TestApplyDryRunOutput(t *testing.T) {
 func TestApplyChownBothOwnerAndGroup(t *testing.T) {
 	skipIfNotRoot(t)
 	f := filepath.Join(t.TempDir(), "test")
-	os.WriteFile(f, []byte(""), 0o644)
+	if err := os.WriteFile(f, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	ok, errs := ApplyActions([]PermAction{makeAction(f, -1, "root", "root")}, false)
 	if !ok {

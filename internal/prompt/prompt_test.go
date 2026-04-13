@@ -681,8 +681,12 @@ func TestLoadStateCorruptedTOML(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stateFile: %v", err)
 	}
-	os.MkdirAll(filepath.Dir(path), 0o755)
-	os.WriteFile(path, []byte("{{{corrupted toml}}}"), 0o644)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{{{corrupted toml}}}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err = LoadState(sourceDir)
 	if err == nil {

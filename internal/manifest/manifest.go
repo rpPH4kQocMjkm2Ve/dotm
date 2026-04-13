@@ -209,10 +209,10 @@ func Save(configDir string, m *PkgManifest) error {
 		return fmt.Errorf("create temp: %w", err)
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	if err := toml.NewEncoder(tmp).Encode(raw); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return fmt.Errorf("encode: %w", err)
 	}
 	if err := tmp.Close(); err != nil {

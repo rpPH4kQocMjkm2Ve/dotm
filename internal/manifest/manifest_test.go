@@ -86,7 +86,9 @@ func TestLoadWithInvalidTOML(t *testing.T) {
 
 	// Create an invalid state file.
 	path, _ := stateFile(dir)
-	os.WriteFile(path, []byte("{{{invalid toml"), 0o644)
+	if err := os.WriteFile(path, []byte("{{{invalid toml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Load should handle error gracefully.
 	m, err := Load(dir)
@@ -110,7 +112,9 @@ func TestLoadWithPkgManifestSection(t *testing.T) {
 packages = [{name = "vim", manager = "apt"}]
 services = [{name = "cron", manager = "systemd"}]
 `
-	os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	m, err := Load(dir)
 	if err != nil {
@@ -135,7 +139,9 @@ func TestLoadWithInvalidPkgManifestSection(t *testing.T) {
 [pkg_manifest]
 packages = "not a table"
 `
-	os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	m, err := Load(dir)
 	if err != nil {
@@ -161,7 +167,9 @@ theme = "dark"
 [manifest]
 files = ["old.txt"]
 `
-	os.WriteFile(path, []byte(existingContent), 0o644)
+	if err := os.WriteFile(path, []byte(existingContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Save new pkg manifest.
 	newPkgs := &PkgManifest{
@@ -412,7 +420,9 @@ files = ["old.txt"]
 directories = ["dir"]
 symlinks = ["link"]
 `
-	os.WriteFile(path, []byte(existingContent), 0o644)
+	if err := os.WriteFile(path, []byte(existingContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Save new pkg manifest — should preserve existing data.
 	newPkgs := &PkgManifest{

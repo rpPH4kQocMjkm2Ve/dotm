@@ -19,10 +19,14 @@ func setupStatusTest(t *testing.T) (sourceDir string, destDir string, state *pro
 
 	// Create dotm.toml.
 	cfgContent := `dest = "` + destDir + `"`
-	os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "dotm.toml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create files/ directory.
-	os.MkdirAll(filepath.Join(sourceDir, "files"), 0o755)
+	if err := os.MkdirAll(filepath.Join(sourceDir, "files"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	state = &prompt.State{
 		Data:         make(map[string]any),
@@ -50,7 +54,9 @@ func buildEngine(t *testing.T, sourceDir, destDir string, state *prompt.State) *
 func writeSourceFile(t *testing.T, sourceDir, rel, content string) {
 	t.Helper()
 	path := filepath.Join(sourceDir, "files", rel)
-	os.MkdirAll(filepath.Dir(path), 0o755)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write source %s: %v", rel, err)
 	}
@@ -59,7 +65,9 @@ func writeSourceFile(t *testing.T, sourceDir, rel, content string) {
 func writeDestFile(t *testing.T, destDir, rel, content string) {
 	t.Helper()
 	path := filepath.Join(destDir, rel)
-	os.MkdirAll(filepath.Dir(path), 0o755)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write dest %s: %v", rel, err)
 	}
@@ -199,7 +207,9 @@ func TestStatusTemplateFile(t *testing.T) {
 func TestStatusNoSourceDir(t *testing.T) {
 	sourceDir, destDir, state := setupStatusTest(t)
 	// Remove files/ directory.
-	os.RemoveAll(filepath.Join(sourceDir, "files"))
+	if err := os.RemoveAll(filepath.Join(sourceDir, "files")); err != nil {
+		t.Fatal(err)
+	}
 
 	eng := buildEngine(t, sourceDir, destDir, state)
 	report, err := eng.Status(ScopeAll, false)
@@ -426,7 +436,9 @@ func TestStatusSymlinkExists(t *testing.T) {
 
 	// Create the symlink in dest.
 	linkPath := filepath.Join(destDir, "mylink")
-	os.Symlink("/some/target", linkPath)
+	if err := os.Symlink("/some/target", linkPath); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := config.Load(filepath.Join(sourceDir, "dotm.toml"))
 	if err != nil {
@@ -494,7 +506,9 @@ func TestStatusOrphanSymlink(t *testing.T) {
 
 	// Create symlink in dest.
 	linkPath := filepath.Join(destDir, "oldlink")
-	os.Symlink("/old/target", linkPath)
+	if err := os.Symlink("/old/target", linkPath); err != nil {
+		t.Fatal(err)
+	}
 
 	// Add to manifest.
 	state.Manifest.Symlinks = []string{"oldlink"}
@@ -519,7 +533,9 @@ func TestStatusOrphanDirectory(t *testing.T) {
 
 	// Create directory in dest.
 	dirPath := filepath.Join(destDir, "olddir")
-	os.MkdirAll(dirPath, 0o755)
+	if err := os.MkdirAll(dirPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Add to manifest.
 	state.Manifest.Directories = []string{"olddir"}
@@ -566,7 +582,9 @@ func TestStatusTemplateRenderError(t *testing.T) {
 	writeSourceFile(t, sourceDir, "bad.txt.tmpl", "hello {{ .undefinedKey }}")
 	// Create dest file so Status reaches the template render step
 	// (without it, Status returns Missing before rendering).
-	os.WriteFile(filepath.Join(destDir, "bad.txt"), []byte("existing dest"), 0o644)
+	if err := os.WriteFile(filepath.Join(destDir, "bad.txt"), []byte("existing dest"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	eng := buildEngine(t, sourceDir, destDir, state)
 	report, err := eng.Status(ScopeFiles, false)
@@ -591,7 +609,9 @@ func TestStatusCollectSourcePathsIgnoresDirectory(t *testing.T) {
 	writeSourceFile(t, sourceDir, ".config/app.conf", "app config")
 
 	// Create ignore.tmpl.
-	os.WriteFile(filepath.Join(sourceDir, "ignore.tmpl"), []byte(".git/**\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(sourceDir, "ignore.tmpl"), []byte(".git/**\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	eng := buildEngine(t, sourceDir, destDir, state)
 	report, err := eng.Status(ScopeFiles, false)

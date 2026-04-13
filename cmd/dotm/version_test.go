@@ -15,11 +15,15 @@ func TestCmdVersion(t *testing.T) {
 
 	cmdVersion()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("w.Close: %v", err)
+	}
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatalf("io.Copy: %v", err)
+	}
 	output := buf.String()
 
 	if output != "dotm dev\n" {

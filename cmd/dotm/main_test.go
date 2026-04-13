@@ -23,7 +23,11 @@ func setupTestDir(t *testing.T) (dir string) {
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
-	t.Cleanup(func() { os.Chdir(oldWd) })
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("restore wd: %v", err)
+		}
+	})
 	return dir
 }
 
@@ -51,9 +55,13 @@ func captureStdout(t *testing.T, fn func()) string {
 	os.Stdout = w
 	defer func() { os.Stdout = old }()
 	fn()
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("w.Close: %v", err)
+	}
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("buf.ReadFrom: %v", err)
+	}
 	return buf.String()
 }
 
@@ -168,8 +176,14 @@ func TestFindSourceDirParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldWd, _ := os.Getwd()
-	os.Chdir(sub)
-	defer os.Chdir(oldWd)
+	if err := os.Chdir(sub); err != nil {
+		t.Fatalf("chdir to subdir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("restore wd: %v", err)
+		}
+	}()
 
 	got, err := findSourceDir()
 	if err != nil {
@@ -186,8 +200,14 @@ func TestFindSourceDirNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	os.Chdir(dir)
-	defer os.Chdir(oldWd)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("restore wd: %v", err)
+		}
+	}()
 
 	_, err = findSourceDir()
 	if err == nil {
@@ -253,9 +273,11 @@ func TestStatusUnknownFlag(t *testing.T) {
 
 func TestStatusQuietModeClean(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	writeDotmToml(t, dir, `dest = "`+dir+`/dest"`)
-	os.MkdirAll(filepath.Join(dir, "dest"), 0o755)
+	if err := os.MkdirAll(filepath.Join(dir, "dest"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	err := runWithArgs([]string{"status", "-q"})
 	if err != nil {
 		t.Errorf("expected no error for clean status, got %v", err)
@@ -264,9 +286,11 @@ func TestStatusQuietModeClean(t *testing.T) {
 
 func TestStatusVerbose(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	writeDotmToml(t, dir, `dest = "`+dir+`/dest"`)
-	os.MkdirAll(filepath.Join(dir, "dest"), 0o755)
+	if err := os.MkdirAll(filepath.Join(dir, "dest"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	captureStdout(t, func() {
 		err := runWithArgs([]string{"status", "-v"})
 		if err != nil {
@@ -277,9 +301,11 @@ func TestStatusVerbose(t *testing.T) {
 
 func TestStatusVerboseLong(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	writeDotmToml(t, dir, `dest = "`+dir+`/dest"`)
-	os.MkdirAll(filepath.Join(dir, "dest"), 0o755)
+	if err := os.MkdirAll(filepath.Join(dir, "dest"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	err := runWithArgs([]string{"status", "--verbose"})
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
@@ -288,9 +314,11 @@ func TestStatusVerboseLong(t *testing.T) {
 
 func TestStatusQuiet(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	writeDotmToml(t, dir, `dest = "`+dir+`/dest"`)
-	os.MkdirAll(filepath.Join(dir, "dest"), 0o755)
+	if err := os.MkdirAll(filepath.Join(dir, "dest"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	err := runWithArgs([]string{"status", "--quiet"})
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
@@ -314,13 +342,19 @@ func TestApplyUnknownFlag(t *testing.T) {
 
 func TestApplyDryRunShort(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"apply", "-n"})
 	if err != nil {
@@ -333,13 +367,19 @@ func TestApplyDryRunShort(t *testing.T) {
 
 func TestApplyDryRunLong(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"apply", "--dry-run"})
 	if err != nil {
@@ -352,13 +392,19 @@ func TestApplyDryRunLong(t *testing.T) {
 
 func TestApplyWritesFile(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("hello world"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("hello world"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"apply"})
 	if err != nil {
@@ -375,13 +421,19 @@ func TestApplyWritesFile(t *testing.T) {
 
 func TestApplyScopeFiles(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"apply", "files"})
 	if err != nil {
@@ -394,14 +446,20 @@ func TestApplyScopeFiles(t *testing.T) {
 
 func TestApplyTemplateFile(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	hostname, _ := os.Hostname()
-	os.WriteFile(filepath.Join(filesDir, "greet.txt.tmpl"), []byte("hello {{ .hostname }}"), 0o644)
+	if err := os.WriteFile(filepath.Join(filesDir, "greet.txt.tmpl"), []byte("hello {{ .hostname }}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"apply"})
 	if err != nil {
@@ -419,11 +477,15 @@ func TestApplyTemplateFile(t *testing.T) {
 
 func TestApplySymlinks(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	linkTarget := filepath.Join(dir, "target.txt")
-	os.WriteFile(linkTarget, []byte("target content"), 0o644)
+	if err := os.WriteFile(linkTarget, []byte("target content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `
 dest = "`+destDir+`"
 [symlinks]
@@ -445,17 +507,23 @@ dest = "`+destDir+`"
 
 func TestApplyScripts(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	outFile := filepath.Join(dir, "script_output.txt")
 	scriptPath := filepath.Join(dir, "scripts", "setup.sh")
-	os.MkdirAll(filepath.Dir(scriptPath), 0o755)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	bashPath, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("bash not found")
 	}
-	os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'ran' > "+outFile+"\n"), 0o644)
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'ran' > "+outFile+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `
 dest = "`+destDir+`"
 shell = "`+bashPath+`"
@@ -479,17 +547,23 @@ trigger = "always"
 
 func TestApplyScriptOnChange(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	outFile := filepath.Join(dir, "on_change_output.txt")
 	scriptPath := filepath.Join(dir, "scripts", "on_change.sh")
-	os.MkdirAll(filepath.Dir(scriptPath), 0o755)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	bashPath, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("bash not found")
 	}
-	os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'changed' > "+outFile+"\n"), 0o644)
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'changed' > "+outFile+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `
 dest = "`+destDir+`"
 shell = "`+bashPath+`"
@@ -508,7 +582,9 @@ trigger = "on_change"
 	}
 
 	// Second run: script skipped (hash unchanged).
-	os.Remove(outFile)
+	if err := os.Remove(outFile); err != nil {
+		t.Fatal(err)
+	}
 	err = runWithArgs([]string{"apply"})
 	if err != nil {
 		t.Fatalf("second apply: %v", err)
@@ -520,17 +596,23 @@ trigger = "on_change"
 
 func TestApplyScriptOnChangeContentChanged(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	outFile := filepath.Join(dir, "on_change_output2.txt")
 	scriptPath := filepath.Join(dir, "scripts", "on_change2.sh")
-	os.MkdirAll(filepath.Dir(scriptPath), 0o755)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	bashPath, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("bash not found")
 	}
-	os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'first' > "+outFile+"\n"), 0o644)
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'first' > "+outFile+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `
 dest = "`+destDir+`"
 shell = "`+bashPath+`"
@@ -545,8 +627,12 @@ trigger = "on_change"
 	}
 
 	// Change script content → hash changes → script runs again.
-	os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'second' > "+outFile+"\n"), 0o644)
-	os.Remove(outFile)
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'second' > "+outFile+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(outFile); err != nil {
+		t.Fatal(err)
+	}
 	err = runWithArgs([]string{"apply"})
 	if err != nil {
 		t.Fatalf("second apply: %v", err)
@@ -559,9 +645,11 @@ trigger = "on_change"
 
 func TestApplyEmptyFilesDir(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	// Don't create files/ at all.
 	err := runWithArgs([]string{"apply"})
@@ -572,15 +660,25 @@ func TestApplyEmptyFilesDir(t *testing.T) {
 
 func TestApplyIgnoresFile(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
-	os.WriteFile(filepath.Join(dir, "ignore.tmpl"), []byte("*.secret\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "ignore.tmpl"), []byte("*.secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "public.conf"), []byte("public"), 0o644)
-	os.WriteFile(filepath.Join(filesDir, "private.secret"), []byte("secret"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "public.conf"), []byte("public"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "private.secret"), []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"apply"})
 	if err != nil {
@@ -598,13 +696,19 @@ func TestApplyIgnoresFile(t *testing.T) {
 
 func TestApplyNestedFiles(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files", ".config", "app")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "settings.conf"), []byte("nested"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "settings.conf"), []byte("nested"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"apply"})
 	if err != nil {
@@ -626,7 +730,9 @@ func TestApplyEmptyFilesDestIsTmp(t *testing.T) {
 dest = "/tmp"
 `)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	err := runWithArgs([]string{"apply"})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -657,14 +763,22 @@ func TestDiffUnknownFlag(t *testing.T) {
 
 func TestDiffClean(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("same content"), 0o644)
-	os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("same content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("same content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("same content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"diff"})
 	if err != nil {
@@ -674,14 +788,22 @@ func TestDiffClean(t *testing.T) {
 
 func TestDiffModified(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644)
-	os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("dest"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("dest"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"diff"})
 	if err != nil {
@@ -691,13 +813,19 @@ func TestDiffModified(t *testing.T) {
 
 func TestDiffNewFile(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "new.conf"), []byte("new content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "new.conf"), []byte("new content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"diff"})
 	if err != nil {
@@ -707,14 +835,22 @@ func TestDiffNewFile(t *testing.T) {
 
 func TestDiffScopeFiles(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644)
-	os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("dest"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "test.conf"), []byte("dest"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"diff", "files"})
 	if err != nil {
@@ -726,7 +862,9 @@ func TestDiffNoFilesDir(t *testing.T) {
 	dir := setupTestDir(t)
 	
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	// No files/ directory.
 	err := runWithArgs([]string{"diff"})
@@ -739,9 +877,11 @@ func TestDiffNoFilesDir(t *testing.T) {
 
 func TestInitNoPrompts(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 
 	out := captureStdout(t, func() {
@@ -769,13 +909,19 @@ func TestInitMissingConfig(t *testing.T) {
 
 func TestApplyAfterInit(t *testing.T) {
 	dir := setupTestDir(t)
-	
+
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Init.
 	out := captureStdout(t, func() {
@@ -829,11 +975,19 @@ func TestCmdResetAll(t *testing.T) {
 	// Create empty state directory.
 	home := t.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", home)
-	defer os.Setenv("HOME", oldHome)
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("restore HOME: %v", err)
+		}
+	}()
 
 	statePath := filepath.Join(home, ".local", "state", "dotm")
-	os.MkdirAll(statePath, 0o755)
+	if err := os.MkdirAll(statePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"reset", "--all"})
 	if err == nil {
@@ -897,8 +1051,14 @@ func TestCmdInitWithDestTilde(t *testing.T) {
 	dir := setupTestDir(t)
 
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", dir)
-	defer os.Setenv("HOME", oldHome)
+	if err := os.Setenv("HOME", dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Setenv("HOME", oldHome); err != nil {
+			t.Fatalf("restore HOME: %v", err)
+		}
+	}()
 
 	writeDotmToml(t, dir, `dest = "~/mydest"`)
 
@@ -970,11 +1130,17 @@ func TestApplyScopeAll(t *testing.T) {
 	dir := setupTestDir(t)
 
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"apply", "--all"})
 	if err != nil {
@@ -1039,11 +1205,17 @@ func TestDiffScopeAll(t *testing.T) {
 	dir := setupTestDir(t)
 
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "new.conf"), []byte("new"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "new.conf"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"diff", "--all"})
 	if err != nil {
@@ -1107,11 +1279,17 @@ func TestStatusScopeAll(t *testing.T) {
 	dir := setupTestDir(t)
 
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	out := captureStdout(t, func() {
 		err := runWithArgs([]string{"status", "--all"})
@@ -1126,7 +1304,9 @@ func TestStatusQuietModeProblems(t *testing.T) {
 	dir := setupTestDir(t)
 
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `dest = "`+destDir+`"`)
 	// No files/ — status will report missing files.
 	err := runWithArgs([]string{"status", "-q"})
@@ -1208,7 +1388,9 @@ func TestCmdInitInvalidConfig(t *testing.T) {
 	dir := setupTestDir(t)
 
 	// Write invalid TOML.
-	os.WriteFile(filepath.Join(dir, "dotm.toml"), []byte("{{{invalid"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "dotm.toml"), []byte("{{{invalid"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"init"})
 	if err == nil {
@@ -1220,7 +1402,9 @@ func TestCmdInitMissingDestInConfig(t *testing.T) {
 	dir := setupTestDir(t)
 
 	// Valid TOML but no dest field.
-	os.WriteFile(filepath.Join(dir, "dotm.toml"), []byte(`shell = "bash"`), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "dotm.toml"), []byte(`shell = "bash"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"init"})
 	if err == nil {
@@ -1234,7 +1418,9 @@ func TestDiffScopeFilesAndPkgs(t *testing.T) {
 	dir := setupTestDir(t)
 
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `
 dest = "`+destDir+`"
 [managers.test]
@@ -1246,8 +1432,12 @@ remove = "echo remove"
 packages = ["vim"]
 `)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"diff", "files", "pkgs"})
 	if err != nil {
@@ -1259,7 +1449,9 @@ func TestDiffScopeFilesAndServices(t *testing.T) {
 	dir := setupTestDir(t)
 
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `
 dest = "`+destDir+`"
 [managers.test]
@@ -1271,8 +1463,12 @@ disable = "echo disable"
 services = ["sshd"]
 `)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("source"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := runWithArgs([]string{"diff", "files", "services"})
 	if err != nil {
@@ -1286,7 +1482,9 @@ func TestApplyScopeFilesAndPkgs(t *testing.T) {
 	dir := setupTestDir(t)
 
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `
 dest = "`+destDir+`"
 [managers.test]
@@ -1298,8 +1496,12 @@ remove = "echo remove"
 packages = ["vim"]
 `)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	out := captureStdout(t, func() {
 		err := runWithArgs([]string{"apply", "files", "pkgs", "-n"})
@@ -1316,7 +1518,9 @@ func TestApplyScopeFilesAndServices(t *testing.T) {
 	dir := setupTestDir(t)
 
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `
 dest = "`+destDir+`"
 [managers.test]
@@ -1328,8 +1532,12 @@ disable = "echo disable"
 services = ["sshd"]
 `)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	out := captureStdout(t, func() {
 		err := runWithArgs([]string{"apply", "files", "services", "-n"})
@@ -1348,7 +1556,9 @@ func TestStatusScopeFilesAndPkgs(t *testing.T) {
 	dir := setupTestDir(t)
 
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `
 dest = "`+destDir+`"
 [managers.test]
@@ -1360,8 +1570,12 @@ remove = "echo remove"
 packages = ["vim"]
 `)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	out := captureStdout(t, func() {
 		err := runWithArgs([]string{"status", "files", "pkgs"})
@@ -1379,7 +1593,9 @@ func TestStatusScopeFilesAndServices(t *testing.T) {
 	dir := setupTestDir(t)
 
 	destDir := filepath.Join(dir, "dest")
-	os.MkdirAll(destDir, 0o755)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeDotmToml(t, dir, `
 dest = "`+destDir+`"
 [managers.test]
@@ -1391,8 +1607,12 @@ disable = "echo disable"
 services = ["sshd"]
 `)
 	filesDir := filepath.Join(dir, "files")
-	os.MkdirAll(filesDir, 0o755)
-	os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644)
+	if err := os.MkdirAll(filesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "test.conf"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Should not error — combined scope is valid.
 	err := runWithArgs([]string{"status", "files", "services"})
@@ -1412,7 +1632,9 @@ func TestCmdResetWithExistingState(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	statePath := filepath.Join(home, ".local", "state", "dotm")
-	os.MkdirAll(statePath, 0o755)
+	if err := os.MkdirAll(statePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create state file directly with prompt data.
 	absDir, _ := filepath.Abs(dir)
@@ -1422,7 +1644,9 @@ func TestCmdResetWithExistingState(t *testing.T) {
 [data]
 gpu = true
 `
-	os.WriteFile(stateFileName, []byte(stateContent), 0o644)
+	if err := os.WriteFile(stateFileName, []byte(stateContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Now reset should succeed.
 	out := captureStdout(t, func() {
@@ -1445,7 +1669,9 @@ func TestCmdResetAllWithExistingState(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	statePath := filepath.Join(home, ".local", "state", "dotm")
-	os.MkdirAll(statePath, 0o755)
+	if err := os.MkdirAll(statePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create state file directly с prompt data.
 	absDir, _ := filepath.Abs(dir)
@@ -1455,7 +1681,9 @@ func TestCmdResetAllWithExistingState(t *testing.T) {
 [data]
 gpu = true
 `
-	os.WriteFile(stateFileName, []byte(stateContent), 0o644)
+	if err := os.WriteFile(stateFileName, []byte(stateContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Now reset --all should succeed.
 	out := captureStdout(t, func() {

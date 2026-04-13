@@ -72,7 +72,9 @@ func TestRenderInvalidTemplate(t *testing.T) {
 func TestRenderFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.tmpl")
-	os.WriteFile(path, []byte("host={{ .hostname }}"), 0o644)
+	if err := os.WriteFile(path, []byte("host={{ .hostname }}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	data := map[string]any{"hostname": "mybox"}
 	out, err := RenderFile(path, data)
