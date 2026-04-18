@@ -48,21 +48,33 @@ func (e *Engine) renderCached(cmdTemplate string, data map[string]any) (string, 
 	return buf.String(), nil
 }
 
-// renderName renders a name template and returns the result.
+// renderNames renders a name template and returns the result.
 // If the name contains no template expressions, it is returned as-is.
-// If the rendered result is empty, returns ("", false, nil).
-func (e *Engine) renderName(name string) (string, bool, error) {
+// If the rendered result is empty, returns (nil, false, nil).
+// Multi-line results are split into separate names.
+func (e *Engine) renderNames(name string) ([]string, bool, error) {
 	if !strings.Contains(name, "{{") {
-		return name, name != "", nil
+		return []string{name}, name != "", nil
 	}
 
 	data := e.rawData("name")
 	result, err := e.renderCached(name, data)
 	if err != nil {
-		return "", false, fmt.Errorf("render %q: %w", name, err)
+		return nil, false, fmt.Errorf("render %q: %w", name, err)
 	}
-	result = strings.TrimSpace(result)
-	return result, result != "", nil
+
+	var names []string
+	for _, line := range strings.Split(result, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			names = append(names, line)
+		}
+	}
+
+	if len(names) == 0 {
+		return nil, false, nil
+	}
+	return names, true, nil
 }
 
 // rawData returns template data with raw (unquoted) values — used for name rendering.
@@ -113,10 +125,10 @@ func (e *Engine) diffPackages() {
 		fmt.Fprintf(os.Stderr, "WARN: load manifest: %v\n", err)
 	}
 
-	// Collect desired packages.
+	// Check what needs installing.
 	desiredPkgs := make(map[string]string) // name -> manager
 	for _, pkg := range e.cfg.Packages() {
-		name, ok, err := e.renderName(pkg.Name)
+		names, ok, err := e.renderNames(pkg.Name)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "WARN: render %s: %v\n", pkg.Name, err)
 			continue
@@ -124,30 +136,25 @@ func (e *Engine) diffPackages() {
 		if !ok {
 			continue
 		}
-		desiredPkgs[name] = pkg.Manager
-	}
 
-	// Check what needs installing.
-	for _, pkg := range e.cfg.Packages() {
-		name, ok, err := e.renderName(pkg.Name)
-		if err != nil {
-			continue
-		}
-		if !ok {
-			continue
-		}
 		mgr, ok := e.cfg.Managers[pkg.Manager]
 		if !ok {
-			fmt.Printf("?        %s (manager %q not found)\n", name, pkg.Manager)
+			for _, name := range names {
+				fmt.Printf("?        %s (manager %q not found)\n", name, pkg.Manager)
+			}
 			continue
 		}
-		installed, err := e.check(mgr.Check, name)
-		if err != nil {
-			fmt.Printf("?        %s (%s) — check error: %v\n", name, pkg.Manager, err)
-			continue
-		}
-		if !installed {
-			fmt.Printf("+ install  %s (%s)\n", name, pkg.Manager)
+
+		for _, name := range names {
+			desiredPkgs[name] = pkg.Manager
+			installed, err := e.check(mgr.Check, name)
+			if err != nil {
+				fmt.Printf("?        %s (%s) — check error: %v\n", name, pkg.Manager, err)
+				continue
+			}
+			if !installed {
+				fmt.Printf("+ install  %s (%s)\n", name, pkg.Manager)
+			}
 		}
 	}
 
@@ -178,10 +185,10 @@ func (e *Engine) diffServices() {
 	}
 	prevSvcs := prevPkgs.Services
 
-	// Collect desired services.
+	// Check what needs enabling.
 	desiredSvcs := make(map[string]string) // name -> manager
 	for _, svc := range e.cfg.Services() {
-		name, ok, err := e.renderName(svc.Name)
+		names, ok, err := e.renderNames(svc.Name)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "WARN: render %s: %v\n", svc.Name, err)
 			continue
@@ -189,30 +196,25 @@ func (e *Engine) diffServices() {
 		if !ok {
 			continue
 		}
-		desiredSvcs[name] = svc.Manager
-	}
 
-	// Check what needs enabling.
-	for _, svc := range e.cfg.Services() {
-		name, ok, err := e.renderName(svc.Name)
-		if err != nil {
-			continue
-		}
-		if !ok {
-			continue
-		}
 		mgr, ok := e.cfg.Managers[svc.Manager]
 		if !ok {
-			fmt.Printf("?        %s (manager %q not found)\n", name, svc.Manager)
+			for _, name := range names {
+				fmt.Printf("?        %s (manager %q not found)\n", name, svc.Manager)
+			}
 			continue
 		}
-		enabled, err := e.check(mgr.Check, name)
-		if err != nil {
-			fmt.Printf("?        %s (%s) — check error: %v\n", name, svc.Manager, err)
-			continue
-		}
-		if !enabled {
-			fmt.Printf("+ enable   %s (%s)\n", name, svc.Manager)
+
+		for _, name := range names {
+			desiredSvcs[name] = svc.Manager
+			enabled, err := e.check(mgr.Check, name)
+			if err != nil {
+				fmt.Printf("?        %s (%s) — check error: %v\n", name, svc.Manager, err)
+				continue
+			}
+			if !enabled {
+				fmt.Printf("+ enable   %s (%s)\n", name, svc.Manager)
+			}
 		}
 	}
 
@@ -248,7 +250,7 @@ func (e *Engine) applyPackages(dryRun bool) ([]manifest.PackageEntry, []error) {
 	var errs []error
 
 	for _, pkg := range e.cfg.Packages() {
-		name, ok, err := e.renderName(pkg.Name)
+		names, ok, err := e.renderNames(pkg.Name)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "WARN: render %s: %v\n", pkg.Name, err)
 			continue
@@ -256,34 +258,37 @@ func (e *Engine) applyPackages(dryRun bool) ([]manifest.PackageEntry, []error) {
 		if !ok {
 			continue
 		}
-		desiredPkgs[name] = pkg.Manager
 
 		mgr := e.cfg.Managers[pkg.Manager]
 
-		if dryRun {
-			fmt.Printf("[DRY RUN] Would check and potentially install: %s (%s)\n", name, pkg.Manager)
-			continue
-		}
+		for _, name := range names {
+			desiredPkgs[name] = pkg.Manager
 
-		installed, err := e.check(mgr.Check, name)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "WARN: check %s: %v\n", name, err)
-			continue
-		}
-
-		if !installed {
-			if err := e.run(mgr.Install, name); err != nil {
-				fmt.Fprintf(os.Stderr, "ERROR: install %s: %v\n", name, err)
-				errs = append(errs, fmt.Errorf("install %s (%s): %w", name, pkg.Manager, err))
+			if dryRun {
+				fmt.Printf("[DRY RUN] Would check and potentially install: %s (%s)\n", name, pkg.Manager)
 				continue
 			}
-			fmt.Printf("Installed: %s (%s)\n", name, pkg.Manager)
-		}
 
-		pkgEntries = append(pkgEntries, manifest.PackageEntry{
-			Name:    name,
-			Manager: pkg.Manager,
-		})
+			installed, err := e.check(mgr.Check, name)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "WARN: check %s: %v\n", name, err)
+				continue
+			}
+
+			if !installed {
+				if err := e.run(mgr.Install, name); err != nil {
+					fmt.Fprintf(os.Stderr, "ERROR: install %s: %v\n", name, err)
+					errs = append(errs, fmt.Errorf("install %s (%s): %w", name, pkg.Manager, err))
+					continue
+				}
+				fmt.Printf("Installed: %s (%s)\n", name, pkg.Manager)
+			}
+
+			pkgEntries = append(pkgEntries, manifest.PackageEntry{
+				Name:    name,
+				Manager: pkg.Manager,
+			})
+		}
 	}
 
 	// Remove obsolete packages.
@@ -334,7 +339,7 @@ func (e *Engine) applyServices(dryRun bool) ([]manifest.ServiceEntry, []error) {
 	var errs []error
 
 	for _, svc := range e.cfg.Services() {
-		name, ok, err := e.renderName(svc.Name)
+		names, ok, err := e.renderNames(svc.Name)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "WARN: render %s: %v\n", svc.Name, err)
 			continue
@@ -342,34 +347,37 @@ func (e *Engine) applyServices(dryRun bool) ([]manifest.ServiceEntry, []error) {
 		if !ok {
 			continue
 		}
-		desiredSvcs[name] = svc.Manager
 
 		mgr := e.cfg.Managers[svc.Manager]
 
-		if dryRun {
-			fmt.Printf("[DRY RUN] Would check and potentially enable: %s (%s)\n", name, svc.Manager)
-			continue
-		}
+		for _, name := range names {
+			desiredSvcs[name] = svc.Manager
 
-		enabled, err := e.check(mgr.Check, name)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "WARN: check service %s: %v\n", name, err)
-			continue
-		}
-
-		if !enabled {
-			if err := e.run(mgr.Enable, name); err != nil {
-				fmt.Fprintf(os.Stderr, "ERROR: enable %s: %v\n", name, err)
-				errs = append(errs, fmt.Errorf("enable %s (%s): %w", name, svc.Manager, err))
+			if dryRun {
+				fmt.Printf("[DRY RUN] Would check and potentially enable: %s (%s)\n", name, svc.Manager)
 				continue
 			}
-			fmt.Printf("Enabled: %s (%s)\n", name, svc.Manager)
-		}
 
-		svcEntries = append(svcEntries, manifest.ServiceEntry{
-			Name:    name,
-			Manager: svc.Manager,
-		})
+			enabled, err := e.check(mgr.Check, name)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "WARN: check service %s: %v\n", name, err)
+				continue
+			}
+
+			if !enabled {
+				if err := e.run(mgr.Enable, name); err != nil {
+					fmt.Fprintf(os.Stderr, "ERROR: enable %s: %v\n", name, err)
+					errs = append(errs, fmt.Errorf("enable %s (%s): %w", name, svc.Manager, err))
+					continue
+				}
+				fmt.Printf("Enabled: %s (%s)\n", name, svc.Manager)
+			}
+
+			svcEntries = append(svcEntries, manifest.ServiceEntry{
+				Name:    name,
+				Manager: svc.Manager,
+			})
+		}
 	}
 
 	// Disable obsolete services.

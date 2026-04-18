@@ -721,15 +721,15 @@ func TestRenderNamePlain(t *testing.T) {
 		t.Fatalf("new engine: %v", err)
 	}
 
-	result, ok, err := eng.renderName("git")
+	result, ok, err := eng.renderNames("git")
 	if err != nil {
-		t.Fatalf("renderName: %v", err)
+		t.Fatalf("renderNames: %v", err)
 	}
 	if !ok {
 		t.Error("expected ok=true for plain name")
 	}
-	if result != "git" {
-		t.Errorf("result = %q, want 'git'", result)
+	if len(result) != 1 || result[0] != "git" {
+		t.Errorf("result = %v, want ['git']", result)
 	}
 }
 
@@ -746,15 +746,15 @@ func TestRenderNameTemplate(t *testing.T) {
 		t.Fatalf("new engine: %v", err)
 	}
 
-	result, ok, err := eng.renderName("{{ .pkg }}")
+	result, ok, err := eng.renderNames("{{ .pkg }}")
 	if err != nil {
-		t.Fatalf("renderName: %v", err)
+		t.Fatalf("renderNames: %v", err)
 	}
 	if !ok {
 		t.Error("expected ok=true")
 	}
-	if result != "zsh" {
-		t.Errorf("result = %q, want 'zsh'", result)
+	if len(result) != 1 || result[0] != "zsh" {
+		t.Errorf("result = %v, want ['zsh']", result)
 	}
 }
 
@@ -771,15 +771,15 @@ func TestRenderNameEmptyResult(t *testing.T) {
 		t.Fatalf("new engine: %v", err)
 	}
 
-	result, ok, err := eng.renderName("{{ .empty }}")
+	result, ok, err := eng.renderNames("{{ .empty }}")
 	if err != nil {
-		t.Fatalf("renderName: %v", err)
+		t.Fatalf("renderNames: %v", err)
 	}
 	if ok {
 		t.Error("expected ok=false for empty result")
 	}
-	if result != "" {
-		t.Errorf("result = %q, want ''", result)
+	if result != nil {
+		t.Errorf("result = %v, want nil", result)
 	}
 }
 
@@ -796,7 +796,7 @@ func TestRenderNameInvalidTemplate(t *testing.T) {
 		t.Fatalf("new engine: %v", err)
 	}
 
-	_, _, err = eng.renderName("{{ .invalid }}")
+	_, _, err = eng.renderNames("{{ .invalid }}")
 	// missingkey=error should cause error for missing key.
 	if err == nil {
 		t.Error("expected error for missing template key")

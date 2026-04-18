@@ -151,7 +151,7 @@ func TestApplyPackagesDryRun(t *testing.T) {
 packages = ["new-pkg"]
 `
 	cfg := loadTOML(t, sourceDir, tomlContent)
-	
+
 	state := &prompt.State{
 		Data:         make(map[string]any),
 		ScriptHashes: make(map[string]string),
@@ -247,7 +247,7 @@ func TestApplyPackagesRemoveObsoleteDryRun(t *testing.T) {
 
 	tomlContent := managerTOML(checkScript)
 	cfg := loadTOML(t, sourceDir, tomlContent)
-	
+
 	state := &prompt.State{
 		Data:         make(map[string]any),
 		ScriptHashes: make(map[string]string),
@@ -284,7 +284,7 @@ func TestApplyServicesDryRun(t *testing.T) {
 services = ["new-svc"]
 `
 	cfg := loadTOML(t, sourceDir, tomlContent)
-	
+
 	state := &prompt.State{
 		Data:         make(map[string]any),
 		ScriptHashes: make(map[string]string),
@@ -379,7 +379,7 @@ func TestApplyServicesDisableObsoleteDryRun(t *testing.T) {
 
 	tomlContent := managerTOML(checkScript)
 	cfg := loadTOML(t, sourceDir, tomlContent)
-	
+
 	state := &prompt.State{
 		Data:         make(map[string]any),
 		ScriptHashes: make(map[string]string),
@@ -555,14 +555,14 @@ func TestRenderNameCaching(t *testing.T) {
 	}
 
 	// Render same name twice — should use cache.
-	_, _, err = eng.renderName("{{ .Name }}")
+	_, _, err = eng.renderNames("{{ .Name }}")
 	if err != nil {
-		t.Fatalf("first renderName: %v", err)
+		t.Fatalf("first renderNames: %v", err)
 	}
 
-	_, _, err = eng.renderName("{{ .Name }}")
+	_, _, err = eng.renderNames("{{ .Name }}")
 	if err != nil {
-		t.Fatalf("second renderName: %v", err)
+		t.Fatalf("second renderNames: %v", err)
 	}
 }
 
@@ -1141,5 +1141,198 @@ services = ["{{ .svc }}"]
 	// Should not print anything since service renders empty.
 	if strings.Contains(output, "enable") || strings.Contains(output, "disable") {
 		t.Errorf("should not print anything for empty service, got: %s", output)
+	}
+}
+
+// ─── Multi-line templates ───────────────────────────────────────────────────
+
+func TestRenderNamesMultiLine(t *testing.T) {
+	sourceDir := t.TempDir()
+	cfg := &config.Config{Dest: "/tmp", Shell: "bash"}
+	state := &prompt.State{
+		Data:         map[string]any{"laptop": true},
+		ScriptHashes: make(map[string]string),
+	}
+
+	eng, err := New(cfg, state, sourceDir, false)
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	// Multi-line template with conditional.
+	tmpl := "{{ if .laptop }}\nbrightnessctl\nopentabletdriver\n{{ end }}"
+	result, ok, err := eng.renderNames(tmpl)
+	if err != nil {
+		t.Fatalf("renderNames: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok=true for multi-line result")
+	}
+	if len(result) != 2 {
+		t.Errorf("got %d names, want 2: %v", len(result), result)
+	}
+	if result[0] != "brightnessctl" || result[1] != "opentabletdriver" {
+		t.Errorf("unexpected names: %v", result)
+	}
+}
+
+func TestRenderNamesMultiLineWithEmptyLines(t *testing.T) {
+	sourceDir := t.TempDir()
+	cfg := &config.Config{Dest: "/tmp", Shell: "bash"}
+	state := &prompt.State{
+		Data:         map[string]any{"laptop": true},
+		ScriptHashes: make(map[string]string),
+	}
+
+	eng, err := New(cfg, state, sourceDir, false)
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+
+	// Template with extra newlines.
+	tmpl := "{{ if .laptop }}\n\nbrightnessctl\n\nopentabletdriver\n\n{{ end }}"
+	result, ok, err := eng.renderNames(tmpl)
+	if err != nil {
+		t.Fatalf("renderNames: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if len(result) != 2 {
+		t.Errorf("got %d names, want 2: %v", len(result), result)
+	}
+}
+
+func TestDiffPackagesMultiLine(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tomlContent := pkgManagerTOML(checkScript) + `
+[mock]
+packages = [
+   """
+   {{ if .laptop }}
+   brightnessctl
+   opentabletdriver
+   {{ end }}
+   """
+]
+`
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
+	eng.data["laptop"] = true
+
+	output := captureStdout(func() {
+		eng.diffPackages()
+	})
+
+	// Should show both packages as needing install.
+	if !strings.Contains(output, "brightnessctl") {
+		t.Errorf("expected brightnessctl in output: %s", output)
+	}
+	if !strings.Contains(output, "opentabletdriver") {
+		t.Errorf("expected opentabletdriver in output: %s", output)
+	}
+}
+
+func TestDiffPackagesMultiLineFalseCondition(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tomlContent := pkgManagerTOML(checkScript) + `
+[mock]
+packages = [
+   """
+   {{ if .laptop }}
+   brightnessctl
+   opentabletdriver
+   {{ end }}
+   """
+]
+`
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
+	eng.data["laptop"] = false
+
+	output := captureStdout(func() {
+		eng.diffPackages()
+	})
+
+	// Should not show any packages (condition false).
+	if strings.Contains(output, "+ install") {
+		t.Errorf("should not show packages when condition is false: %s", output)
+	}
+}
+
+func TestDiffServicesMultiLine(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tomlContent := pkgManagerTOML(checkScript) + `
+[mock]
+services = [
+    """
+    {{ if .laptop }}
+    brightnessctl
+    opentabletdriver
+    {{ end }}
+    """
+]
+`
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
+	eng.data["laptop"] = true
+
+	output := captureStdout(func() {
+		eng.diffServices()
+	})
+
+	// Should show both services as needing enable.
+	if !strings.Contains(output, "brightnessctl") {
+		t.Errorf("expected brightnessctl in output: %s", output)
+	}
+	if !strings.Contains(output, "opentabletdriver") {
+		t.Errorf("expected opentabletdriver in output: %s", output)
+	}
+}
+
+func TestDiffServicesMultiLineFalseCondition(t *testing.T) {
+	sourceDir := t.TempDir()
+	checkScript := filepath.Join(sourceDir, "check.sh")
+	if err := os.WriteFile(checkScript, []byte("#!/bin/bash\nexit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tomlContent := pkgManagerTOML(checkScript) + `
+[mock]
+services = [
+    """
+    {{ if .laptop }}
+    brightnessctl
+    opentabletdriver
+    {{ end }}
+    """
+]
+`
+	cfg := loadTOML(t, sourceDir, tomlContent)
+	eng := newEngine(t, sourceDir, cfg)
+	eng.data["laptop"] = false
+
+	output := captureStdout(func() {
+		eng.diffServices()
+	})
+
+	// Should not show any services (condition false).
+	if strings.Contains(output, "+ enable") {
+		t.Errorf("should not show services when condition is false: %s", output)
 	}
 }

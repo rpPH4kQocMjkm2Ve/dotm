@@ -16,7 +16,7 @@ func (e *Engine) statusPackages(report *StatusReport, prevPkgs *manifest.PkgMani
 	headerPrinted := false
 
 	for _, pkg := range e.cfg.Packages() {
-		name, ok, err := e.renderName(pkg.Name)
+		names, ok, err := e.renderNames(pkg.Name)
 		if err != nil {
 			fmt.Printf("  ?        %s (%s) — %v\n", pkg.Name, pkg.Manager, err)
 			report.PkgHasProblems = true
@@ -34,39 +34,45 @@ func (e *Engine) statusPackages(report *StatusReport, prevPkgs *manifest.PkgMani
 			}
 			continue
 		}
-		desiredPkgs[name] = true
 
 		mgr, ok := e.cfg.Managers[pkg.Manager]
 		if !ok {
-			fmt.Printf("  ?        %s (manager %q not found)\n", name, pkg.Manager)
-			report.PkgHasProblems = true
-			report.PkgOrSvcPrinted = true
+			for _, name := range names {
+				fmt.Printf("  ?        %s (manager %q not found)\n", name, pkg.Manager)
+				report.PkgHasProblems = true
+				report.PkgOrSvcPrinted = true
+			}
 			continue
 		}
-		installed, err := e.check(mgr.Check, name)
-		if err != nil {
-			fmt.Printf("  ?        %s (%s) — check error: %v\n", name, pkg.Manager, err)
-			report.PkgHasProblems = true
-			report.PkgOrSvcPrinted = true
-			continue
-		}
-		if installed {
-			if verbose {
+
+		for _, name := range names {
+			desiredPkgs[name] = true
+
+			installed, err := e.check(mgr.Check, name)
+			if err != nil {
+				fmt.Printf("  ?        %s (%s) — check error: %v\n", name, pkg.Manager, err)
+				report.PkgHasProblems = true
+				report.PkgOrSvcPrinted = true
+				continue
+			}
+			if installed {
+				if verbose {
+					if !headerPrinted {
+						fmt.Println("Packages:")
+						headerPrinted = true
+						report.PkgOrSvcPrinted = true
+					}
+					fmt.Printf("  OK       %s (%s)\n", name, pkg.Manager)
+				}
+			} else {
 				if !headerPrinted {
 					fmt.Println("Packages:")
 					headerPrinted = true
 					report.PkgOrSvcPrinted = true
 				}
-				fmt.Printf("  OK       %s (%s)\n", name, pkg.Manager)
+				fmt.Printf("  MISSING  %s (%s)\n", name, pkg.Manager)
+				report.PkgHasProblems = true
 			}
-		} else {
-			if !headerPrinted {
-				fmt.Println("Packages:")
-				headerPrinted = true
-				report.PkgOrSvcPrinted = true
-			}
-			fmt.Printf("  MISSING  %s (%s)\n", name, pkg.Manager)
-			report.PkgHasProblems = true
 		}
 	}
 
@@ -110,7 +116,7 @@ func (e *Engine) statusServices(report *StatusReport, prevPkgs *manifest.PkgMani
 	headerPrinted := false
 
 	for _, svc := range e.cfg.Services() {
-		name, ok, err := e.renderName(svc.Name)
+		names, ok, err := e.renderNames(svc.Name)
 		if err != nil {
 			fmt.Printf("  ?        %s (%s) — %v\n", svc.Name, svc.Manager, err)
 			report.SvcHasProblems = true
@@ -128,24 +134,41 @@ func (e *Engine) statusServices(report *StatusReport, prevPkgs *manifest.PkgMani
 			}
 			continue
 		}
-		desiredSvcs[name] = true
 
 		mgr, ok := e.cfg.Managers[svc.Manager]
 		if !ok {
-			fmt.Printf("  ?        %s (manager %q not found)\n", name, svc.Manager)
-			report.SvcHasProblems = true
-			report.PkgOrSvcPrinted = true
+			for _, name := range names {
+				fmt.Printf("  ?        %s (manager %q not found)\n", name, svc.Manager)
+				report.SvcHasProblems = true
+				report.PkgOrSvcPrinted = true
+			}
 			continue
 		}
-		enabled, err := e.check(mgr.Check, name)
-		if err != nil {
-			fmt.Printf("  ?        %s (%s) — check error: %v\n", name, svc.Manager, err)
-			report.SvcHasProblems = true
-			report.PkgOrSvcPrinted = true
-			continue
-		}
-		if enabled {
-			if verbose {
+
+		for _, name := range names {
+			desiredSvcs[name] = true
+
+			enabled, err := e.check(mgr.Check, name)
+			if err != nil {
+				fmt.Printf("  ?        %s (%s) — check error: %v\n", name, svc.Manager, err)
+				report.SvcHasProblems = true
+				report.PkgOrSvcPrinted = true
+				continue
+			}
+			if enabled {
+				if verbose {
+					if !headerPrinted {
+						if report.PkgOrSvcPrinted {
+							fmt.Println("\nServices:")
+						} else {
+							fmt.Println("Services:")
+						}
+						headerPrinted = true
+						report.PkgOrSvcPrinted = true
+					}
+					fmt.Printf("  ENABLED  %s (%s)\n", name, svc.Manager)
+				}
+			} else {
 				if !headerPrinted {
 					if report.PkgOrSvcPrinted {
 						fmt.Println("\nServices:")
@@ -155,20 +178,9 @@ func (e *Engine) statusServices(report *StatusReport, prevPkgs *manifest.PkgMani
 					headerPrinted = true
 					report.PkgOrSvcPrinted = true
 				}
-				fmt.Printf("  ENABLED  %s (%s)\n", name, svc.Manager)
+				fmt.Printf("  DISABLED %s (%s)\n", name, svc.Manager)
+				report.SvcHasProblems = true
 			}
-		} else {
-			if !headerPrinted {
-				if report.PkgOrSvcPrinted {
-					fmt.Println("\nServices:")
-				} else {
-					fmt.Println("Services:")
-				}
-				headerPrinted = true
-				report.PkgOrSvcPrinted = true
-			}
-			fmt.Printf("  DISABLED %s (%s)\n", name, svc.Manager)
-			report.SvcHasProblems = true
 		}
 	}
 
@@ -204,4 +216,3 @@ func (e *Engine) statusServices(report *StatusReport, prevPkgs *manifest.PkgMani
 
 	return nil
 }
-
