@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -22,9 +21,12 @@ type Config struct {
 	Managers map[string]ManagerConfig `toml:"managers"`
 	Groups   map[string]GroupConfig
 
-	// Resolved packages and services, computed during Load.
+	// Resolved packages and services, computed during load.
 	resolvedPkgs []PackageEntry
 	resolvedSvcs []ServiceEntry
+
+	// Group order from TOML file (for deterministic output).
+	groupOrder []string
 }
 
 // PromptConfig defines an interactive prompt.
@@ -76,15 +78,17 @@ type ServiceEntry struct {
 // Paths containing ~ are expanded to the user's home directory.
 func Load(path string) (*Config, error) {
 	var raw map[string]any
-	if _, err := toml.DecodeFile(path, &raw); err != nil {
+	meta, err := toml.DecodeFile(path, &raw)
+	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 
 	cfg := &Config{
-		Managers: make(map[string]ManagerConfig),
-		Groups:   make(map[string]GroupConfig),
-		Prompts:  make(map[string]PromptConfig),
-		Symlinks: make(map[string]string),
+		Managers:   make(map[string]ManagerConfig),
+		Groups:     make(map[string]GroupConfig),
+		Prompts:    make(map[string]PromptConfig),
+		Symlinks:   make(map[string]string),
+		groupOrder: []string{},
 	}
 
 	// Parse struct fields with known schema (dest, shell, symlinks, scripts, prompts).
@@ -128,15 +132,23 @@ func Load(path string) (*Config, error) {
 		"managers": true, "prompts": true,
 		"dest": true, "shell": true, "symlinks": true, "scripts": true,
 	}
-	for key, val := range raw {
-		if reservedKeys[key] {
+
+	// Collect group names in TOML order from meta.Keys()
+	for _, key := range meta.Keys() {
+		keyStr := key.String()
+		if reservedKeys[keyStr] {
+			continue
+		}
+		val, ok := raw[keyStr]
+		if !ok {
 			continue
 		}
 		group, err := parseGroup(val)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", key, err)
+			return nil, fmt.Errorf("%s: %w", keyStr, err)
 		}
-		cfg.Groups[key] = *group
+		cfg.Groups[keyStr] = *group
+		cfg.groupOrder = append(cfg.groupOrder, keyStr)
 	}
 
 	cfg.Dest = expandHome(cfg.Dest)
@@ -348,19 +360,22 @@ func (c *Config) validate() error {
 	return nil
 }
 
-// sortedGroupNames returns group names in sorted order for deterministic iteration.
-func (c *Config) sortedGroupNames() []string {
+// orderedGroupNames returns group names in TOML order, or map iteration order as fallback.
+func (c *Config) orderedGroupNames() []string {
+	if len(c.groupOrder) > 0 {
+		return c.groupOrder
+	}
+	// Fallback for tests that create Config directly without Load.
 	names := make([]string, 0, len(c.Groups))
 	for name := range c.Groups {
 		names = append(names, name)
 	}
-	sort.Strings(names)
 	return names
 }
 
 // resolvePackagesAndServices computes resolved packages and services once.
 func (c *Config) resolvePackagesAndServices() {
-	names := c.sortedGroupNames()
+	names := c.orderedGroupNames()
 
 	var pkgs []PackageEntry
 	var svcs []ServiceEntry

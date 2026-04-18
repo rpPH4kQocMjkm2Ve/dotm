@@ -429,7 +429,7 @@ func TestParseGroupServicesNotArray(t *testing.T) {
 
 func TestParseGroupUnknownKey(t *testing.T) {
 	val := map[string]any{
-		"packages":  []any{"git"},
+		"packages":   []any{"git"},
 		"unknownkey": "value",
 	}
 	_, err := parseGroup(val)
@@ -587,6 +587,98 @@ packages = ["git", "zsh"]
 	pkgs := cfg.Packages()
 	if len(pkgs) != 2 {
 		t.Fatalf("expected 2 packages, got %d", len(pkgs))
+	}
+}
+
+func TestLoadGroupOrderPreserved(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+dest = "/home/user"
+
+[managers.pacman]
+check = "pacman -Q {{.Name}}"
+install = "sudo pacman -S {{.Name}}"
+remove = "sudo pacman -Rns {{.Name}}"
+
+[managers.aur]
+check = "pacman -Q {{.Name}}"
+install = "yay -S {{.Name}}"
+remove = "sudo pacman -Rns {{.Name}}"
+
+[managers.systemd]
+check = "systemctl is-enabled {{.Name}}"
+enable = "sudo systemctl enable {{.Name}}"
+disable = "sudo systemctl disable {{.Name}}"
+
+[managers.systemd-user]
+check = "systemctl --user is-enabled {{.Name}}"
+enable = "systemctl --user enable {{.Name}}"
+disable = "systemctl --user disable {{.Name}}"
+
+[aur]
+packages = ["pkg-a", "pkg-b"]
+
+[systemd]
+services = ["firewalld"]
+
+[pacman]
+packages = ["git", "zsh"]
+
+[systemd-user]
+services = ["mpd"]
+`
+	path := filepath.Join(dir, "dotm.toml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Check group order from TOML: aur -> systemd -> pacman -> systemd-user
+	names := cfg.orderedGroupNames()
+	expected := []string{"aur", "systemd", "pacman", "systemd-user"}
+	if len(names) != len(expected) {
+		t.Fatalf("orderedGroupNames: got %v, want %v", names, expected)
+	}
+	for i, want := range expected {
+		if names[i] != want {
+			t.Errorf("orderedGroupNames[%d] = %q, want %q", i, names[i], want)
+		}
+	}
+
+	// Packages should follow group order: aur first, then pacman
+	pkgs := cfg.Packages()
+	if len(pkgs) != 4 {
+		t.Fatalf("expected 4 packages, got %d", len(pkgs))
+	}
+	// aur packages come first (in TOML order)
+	if pkgs[0].Manager != "aur" || pkgs[0].Name != "pkg-a" {
+		t.Errorf("first pkg = (%s, %s), want (aur, pkg-a)", pkgs[0].Manager, pkgs[0].Name)
+	}
+	if pkgs[1].Manager != "aur" || pkgs[1].Name != "pkg-b" {
+		t.Errorf("second pkg = (%s, %s), want (aur, pkg-b)", pkgs[1].Manager, pkgs[1].Name)
+	}
+	// pacman packages come second
+	if pkgs[2].Manager != "pacman" || pkgs[2].Name != "git" {
+		t.Errorf("third pkg = (%s, %s), want (pacman, git)", pkgs[2].Manager, pkgs[2].Name)
+	}
+	if pkgs[3].Manager != "pacman" || pkgs[3].Name != "zsh" {
+		t.Errorf("fourth pkg = (%s, %s), want (pacman, zsh)", pkgs[3].Manager, pkgs[3].Name)
+	}
+
+	// Services should follow group order
+	svcs := cfg.Services()
+	if len(svcs) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(svcs))
+	}
+	if svcs[0].Manager != "systemd" || svcs[0].Name != "firewalld" {
+		t.Errorf("first svc = (%s, %s), want (systemd, firewalld)", svcs[0].Manager, svcs[0].Name)
+	}
+	if svcs[1].Manager != "systemd-user" || svcs[1].Name != "mpd" {
+		t.Errorf("second svc = (%s, %s), want (systemd-user, mpd)", svcs[1].Manager, svcs[1].Name)
 	}
 }
 
